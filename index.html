@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="vi" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>DriveGuard AI – Hệ thống phát hiện & cảnh báo tài xế buồn ngủ</title>
+    <meta name="description" content="Hệ thống phát hiện sớm dấu hiệu buồn ngủ của tài xế bằng camera và AI theo thời gian thực" />
+    <meta name="theme-color" content="#020617" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta property="og:title" content="DriveGuard AI" />
+    <meta property="og:description" content="Phát hiện và cảnh báo tài xế buồn ngủ theo thời gian thực" />
+    <meta property="og:type" content="website" />
+  </head>
+  <body class="bg-slate-950 text-slate-100 min-h-screen antialiased selection:bg-cyan-500 selection:text-slate-950">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(err => {
+            console.log('ServiceWorker registration failed: ', err);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
+

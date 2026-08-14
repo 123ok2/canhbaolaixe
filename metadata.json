@@ -1,0 +1,6 @@
+{
+  "name": "DriveGuard AI",
+  "description": "Hệ thống phát hiện và cảnh báo tài xế buồn ngủ theo thời gian thực bằng camera và AI",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
