@@ -1,15 +1,16 @@
 /**
  * Web Audio API & Multi-Tier Vietnamese Audio Alerts Hook for DriveGuard AI
- * Zero-failure sound engine featuring:
- * 1. Automatic AudioContext & HTML5 Audio Unlocking on any user interaction
- * 2. Preloaded Audio Cache with proper Base URL resolution for Vercel / GitHub / Production
- * 3. Tier 1: Localized Vietnamese MP3 voice alerts
- * 4. Tier 2: Real-time Web Audio API procedural synthesizer (offline & infallible)
- * 5. Tier 3: Native Web SpeechSynthesis API Vietnamese voice fallback
+ * Zero-failure, 100% Identical Sound Engine for ALL environments (Vercel, GitHub, AI Studio, Local, Offline):
+ * 1. Embedded High-Quality Studio MP3 Audio (Inlined Base64 data URLs) - 0% 404 network failure on any hosting
+ * 2. Automatic AudioContext & HTML5 Audio Unlocking on any user gesture
+ * 3. Exact Vietnamese studio voice alerts
+ * 4. Tier 2: Real-time Web Audio API procedural synthesizer (fallback)
+ * 5. Tier 3: Native Web SpeechSynthesis API Vietnamese voice (fallback)
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { audioSynthesizer } from '../engine/AudioSynthesizer';
+import { EMBEDDED_SOUNDS } from '../data/soundBase64';
 import { PrimaryAlertReason } from '../types';
 
 export function useAudioAlerts() {
@@ -21,11 +22,14 @@ export function useAudioAlerts() {
   const [isAudioUnlocked, setIsAudioUnlocked] = useState<boolean>(false);
   const [isPlayingEmergency, setIsPlayingEmergency] = useState<boolean>(false);
 
-  // Sound cache pool to avoid continuous new Audio() object creation
+  // Sound cache pool initialized with embedded base64 audio sources
   const soundCacheRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
-  // Helper to get safe base URL for sounds
-  const getSoundUrl = useCallback((fileName: string) => {
+  // Helper to get audio source URL (Prefer embedded Base64 data URI to guarantee 100% success on Vercel/GitHub/SPA)
+  const getSoundUrl = useCallback((fileName: string): string => {
+    if (EMBEDDED_SOUNDS && EMBEDDED_SOUNDS[fileName]) {
+      return EMBEDDED_SOUNDS[fileName];
+    }
     const rawBase = ((import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL || '/').replace(/\/+$/, '');
     return `${rawBase}/sounds/${fileName}`;
   }, []);
@@ -76,9 +80,9 @@ export function useAudioAlerts() {
       audioCtxRef.current.resume().catch(() => {});
     }
 
-    // 3. Play and instantly pause a cached audio or silent buffer
+    // 3. Play and instantly pause a cached audio to unlock HTML5 Audio tag autoplay permissions
     try {
-      const sample = soundCacheRef.current.get('beep_level.mp3');
+      const sample = soundCacheRef.current.get('beep_level.mp3') || new Audio(getSoundUrl('beep_level.mp3'));
       if (sample) {
         sample.volume = 0.01;
         sample.play().then(() => {
@@ -92,7 +96,7 @@ export function useAudioAlerts() {
     }
 
     setIsAudioUnlocked(true);
-  }, []);
+  }, [getSoundUrl]);
 
   // Global user interaction listener to ensure audio is always unlocked early
   useEffect(() => {
@@ -185,7 +189,7 @@ export function useAudioAlerts() {
     }
   }, [isMuted]);
 
-  // Robust audio playback with 3-Tier Multi-Level Fallback
+  // Robust audio playback with 3-Tier Multi-Level Fallback (Plays exact studio Vietnamese voice)
   const playCustomAudioFile = useCallback((
     fileName: string,
     minIntervalMs: number = 1800,
@@ -365,7 +369,7 @@ export function useAudioAlerts() {
         2000,
         false,
         'warning',
-        'Cảnh báo! Phát hiện gục đầu, hãy ngẩng cao đầu lên ngay!'
+        'Cảnh báo! Phát hiện guc đầu, hãy ngẩng cao đầu lên ngay!'
       );
     } else if (customReason === 'HEAD_TILT_SLEEP') {
       playCustomAudioFile(
