@@ -11,6 +11,8 @@ interface HeaderProps {
   score: number;
   isMuted: boolean;
   onToggleMute: () => void;
+  onTestAudio?: () => void;
+  isAudioUnlocked?: boolean;
   onOpenDemo?: () => void;
   onRecalibrate?: () => void;
   isEnhancedMonitoring: boolean;
@@ -22,6 +24,8 @@ export const Header: React.FC<HeaderProps> = ({
   score,
   isMuted,
   onToggleMute,
+  onTestAudio,
+  isAudioUnlocked,
   onRecalibrate,
   isEnhancedMonitoring,
   sensitivityLevel = 3
@@ -116,6 +120,19 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <RefreshCw className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
               <span className="hidden md:inline">Hiệu chỉnh</span>
+            </button>
+          )}
+
+          {/* Test Sound & Audio Unlock Button */}
+          {onTestAudio && (
+            <button
+              onClick={onTestAudio}
+              id="btn-test-audio"
+              className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-700/80 hover:border-amber-500/50 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+              title="Kiểm tra phát âm thanh & Kích hoạt quyền loa trình duyệt"
+            >
+              <Volume2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="hidden sm:inline">Thử loa</span>
             </button>
           )}
 

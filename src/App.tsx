@@ -31,6 +31,9 @@ export default function App() {
   const { videoRef, stream, cameraState, startCamera } = useCamera();
   const {
     initAudioContext,
+    unlockAudio,
+    isAudioUnlocked,
+    testAudioSystem,
     playLevel1Alert,
     playLevel2Alert,
     playLevel3Alert,
@@ -210,6 +213,8 @@ export default function App() {
         score={metrics.score}
         isMuted={isMuted}
         onToggleMute={toggleMute}
+        onTestAudio={testAudioSystem}
+        isAudioUnlocked={isAudioUnlocked}
         onRecalibrate={() => engine.openCalibration()}
         isEnhancedMonitoring={metrics.isEnhancedMonitoring}
         sensitivityLevel={sensitivity}
@@ -266,7 +271,10 @@ export default function App() {
       {(cameraState.hasPermission === false || (!cameraState.isStreaming && cameraState.error)) && (
         <CameraPermissionModal
           error={cameraState.error}
-          onGrantPermission={startCamera}
+          onGrantPermission={() => {
+            unlockAudio();
+            startCamera();
+          }}
           isLoading={isFaceLandmarkerLoading}
         />
       )}
@@ -279,8 +287,14 @@ export default function App() {
         calibration={metrics.calibration}
         stream={stream}
         videoRef={videoRef}
-        onBeginCalibration={() => engine.beginCalibrationSampling()}
-        onSkip={() => engine.skipCalibration()}
+        onBeginCalibration={() => {
+          unlockAudio();
+          engine.beginCalibrationSampling();
+        }}
+        onSkip={() => {
+          unlockAudio();
+          engine.skipCalibration();
+        }}
       />
 
       {/* Drowsiness Alert Modal (Level 1, Level 2, Level 3) with "TÔI ĐÃ TỈNH" and 'X' Button */}
