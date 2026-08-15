@@ -8,14 +8,12 @@ import React from 'react';
 interface CameraPermissionModalProps {
   error: string | null;
   onGrantPermission: () => void;
-  onStartDemo?: () => void;
   isLoading: boolean;
 }
 
 export const CameraPermissionModal: React.FC<CameraPermissionModalProps> = ({
   error,
   onGrantPermission,
-  onStartDemo,
   isLoading
 }) => {
   return (
@@ -72,17 +70,6 @@ export const CameraPermissionModal: React.FC<CameraPermissionModalProps> = ({
               </>
             )}
           </button>
-
-          {onStartDemo && (
-            <button
-              onClick={onStartDemo}
-              id="btn-start-demo-fallback"
-              className="w-full py-2.5 px-4 rounded-xl font-medium text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors flex items-center justify-center gap-2 border border-slate-700"
-            >
-              <Activity className="w-4 h-4 text-cyan-400" />
-              <span>Dùng Chế độ Giả lập (DEMO Mode không cần camera)</span>
-            </button>
-          )}
         </div>
 
         <div className="text-[11px] text-slate-400 flex items-center justify-center gap-1.5 pt-1">

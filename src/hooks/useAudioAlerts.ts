@@ -1,6 +1,6 @@
 /**
- * Web Audio API & Speech Synthesis Hook for DriveGuard AI Alert Sounds
- * Provides pure synthesizer sound generation and Vietnamese voice warnings without relying on external audio assets.
+ * Web Audio API & Vietnamese Audio Alerts Hook for DriveGuard AI
+ * Seamlessly plays localized Vietnamese MP3 alerts for driving hazards and sensitivity adjustments.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -10,7 +10,10 @@ export function useAudioAlerts() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const activeAlarmIntervalRef = useRef<number | null>(null);
   const lastSpokenTimeRef = useRef<number>(0);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const [isMuted, setIsMuted] = useState<boolean>(false);
+
+  const [isPlayingEmergency, setIsPlayingEmergency] = useState<boolean>(false);
 
   // Initialize or resume AudioContext on user interaction
   const initAudioContext = useCallback(() => {
@@ -30,6 +33,16 @@ export function useAudioAlerts() {
       clearInterval(activeAlarmIntervalRef.current);
       activeAlarmIntervalRef.current = null;
     }
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+      } catch {
+        // Safe catch
+      }
+      currentAudioRef.current = null;
+    }
+    setIsPlayingEmergency(false);
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       try {
         window.speechSynthesis.cancel();
@@ -39,30 +52,73 @@ export function useAudioAlerts() {
     }
   }, []);
 
-  // Store available voices
-  const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  // Play custom audio file from /sounds/ directory
+  const playCustomAudioFile = useCallback((fileName: string, minIntervalMs: number = 1800, loop: boolean = false) => {
+    if (isMuted || typeof window === 'undefined') return;
+    const now = Date.now();
+    if (!loop && now - lastSpokenTimeRef.current < minIntervalMs) return;
+    lastSpokenTimeRef.current = now;
 
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-
-    const loadVoices = () => {
-      try {
-        const available = window.speechSynthesis.getVoices();
-        if (available && available.length > 0) {
-          voicesRef.current = available;
+    try {
+      if (currentAudioRef.current) {
+        try {
+          currentAudioRef.current.pause();
+        } catch {
+          // Safe catch
         }
-      } catch {
-        // Safe catch
       }
-    };
 
-    loadVoices();
-    if (window.speechSynthesis.onvoiceschanged !== undefined) {
-      window.speechSynthesis.onvoiceschanged = loadVoices;
+      const audio = new Audio(`/sounds/${fileName}`);
+      audio.volume = 1.0;
+      audio.loop = loop;
+      currentAudioRef.current = audio;
+      if (loop) {
+        setIsPlayingEmergency(true);
+      }
+      audio.play().catch(() => {
+        // Safe catch for browser autoplay policies
+      });
+    } catch {
+      // Safe fallback
     }
-  }, []);
+  }, [isMuted]);
 
-  // Vietnamese Voice Announcement with throttle protection and mobile resume handling
+  // Continuous emergency siren with voice warning (Hú còi liên tục + Giọng cảnh báo)
+  const playContinuousEmergencyAlert = useCallback(() => {
+    if (isMuted) return;
+    initAudioContext();
+    stopActiveAlert();
+    playCustomAudioFile('alert_khan_cap_lien_tuc.mp3', 0, true);
+  }, [initAudioContext, isMuted, stopActiveAlert, playCustomAudioFile]);
+
+  // Short click beep for sensitivity level changes (Mức 1 đến 5)
+  const playBeepLevel = useCallback(() => {
+    if (isMuted || typeof window === 'undefined') return;
+    try {
+      const audio = new Audio('/sounds/beep_level.mp3');
+      audio.volume = 0.9;
+      audio.play().catch(() => {
+        // Fallback Web Audio beep if needed
+        initAudioContext();
+        const ctx = audioCtxRef.current;
+        if (ctx) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.frequency.setValueAtTime(1200, ctx.currentTime);
+          gain.gain.setValueAtTime(0.15, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(ctx.currentTime);
+          osc.stop(ctx.currentTime + 0.15);
+        }
+      });
+    } catch {
+      // Safe fallback
+    }
+  }, [initAudioContext, isMuted]);
+
+  // Speech synthesis fallback if needed
   const speakVoiceAlert = useCallback((text: string, minIntervalMs: number = 2000) => {
     if (isMuted || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     const now = Date.now();
@@ -77,12 +133,11 @@ export function useAudioAlerts() {
 
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'vi-VN';
-      utterance.rate = 1.0;
+      utterance.rate = 1.1;
       utterance.pitch = 1.05;
       utterance.volume = 1.0;
 
-      const voices = voicesRef.current.length > 0 ? voicesRef.current : window.speechSynthesis.getVoices();
-      // Look for Vietnamese voice first (e.g. Google Tiếng Việt, Microsoft HoaiMy, etc.)
+      const voices = window.speechSynthesis.getVoices();
       const viVoice = voices.find((v) => 
         v.lang === 'vi-VN' || 
         v.lang === 'vi_VN' || 
@@ -97,167 +152,74 @@ export function useAudioAlerts() {
 
       window.speechSynthesis.speak(utterance);
     } catch {
-      // Ignore if speech synthesis restricted
+      // Safe catch
     }
   }, [isMuted]);
 
-  // Helper to play custom audio file from /sounds/ directory with fallback
-  const playCustomAudioFile = useCallback((fileName: string) => {
-    if (isMuted || typeof window === 'undefined') return;
-    try {
-      const audio = new Audio(`/sounds/${fileName}`);
-      audio.volume = 1.0;
-      audio.play().catch(() => {
-        // Safe catch for autoplay restrictions or empty draft files
-      });
-    } catch {
-      // Safe fallback
-    }
-  }, [isMuted]);
+  // Cảnh báo sớm: Mất tập trung -> alert_mat_tap_trung.mp3
+  const playEarlyDistractionAlert = useCallback(() => {
+    if (isMuted) return;
+    initAudioContext();
+    playCustomAudioFile('alert_mat_tap_trung.mp3', 2000);
+  }, [initAudioContext, isMuted, playCustomAudioFile]);
 
-  // Level 1 Alert: Soft gentle double-beep (Tired / Early warning)
+  // Cảnh báo sớm: Buồn ngủ -> alert_buon_ngu_som.mp3
+  const playEarlyDrowsinessAlert = useCallback(() => {
+    if (isMuted) return;
+    initAudioContext();
+    playCustomAudioFile('alert_buon_ngu_som.mp3', 2000);
+  }, [initAudioContext, isMuted, playCustomAudioFile]);
+
+  // Level 1 Alert: Cảnh báo sớm mệt mỏi / mất tập trung / chớm buồn ngủ
   const playLevel1Alert = useCallback((customReason?: PrimaryAlertReason) => {
     if (isMuted) return;
     initAudioContext();
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
 
-    // Trigger custom audio file if present
-    playCustomAudioFile('alert_met_moi.mp3');
-
-    const playBeep = (freq: number, startTime: number, duration: number) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, startTime);
-
-      gain.gain.setValueAtTime(0.01, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.2, startTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start(startTime);
-      osc.stop(startTime + duration);
-    };
-
-    const now = ctx.currentTime;
-    playBeep(587.33, now, 0.14);        // D5
-    playBeep(739.99, now + 0.16, 0.20); // F#5
-
-    if (customReason === 'YAWN') {
-      speakVoiceAlert('Phát hiện dấu hiệu mệt mỏi, hãy chú ý quan sát!', 4000);
+    if (customReason === 'EARLY_DISTRACTION' || customReason === 'HEAD_TURNED' || customReason === 'FACE_LOST') {
+      // alert_mat_tap_trung.mp3: "Chú ý! Bạn đang mất tập trung, hãy nhìn thẳng phía trước!"
+      playCustomAudioFile('alert_mat_tap_trung.mp3', 2000);
+    } else if (customReason === 'EARLY_DROWSINESS' || customReason === 'DROWSY_DROOP') {
+      // alert_buon_ngu_som.mp3: "Chú ý! Phát hiện buồn ngủ sớm, hãy tập trung lái xe!"
+      playCustomAudioFile('alert_buon_ngu_som.mp3', 2000);
+    } else if (customReason === 'YAWN') {
+      // alert_met_moi.mp3: "Phát hiện dấu hiệu mệt mỏi, hãy chú ý quan sát!"
+      playCustomAudioFile('alert_met_moi.mp3', 2200);
     } else {
-      speakVoiceAlert('Chú ý tập trung lái xe!', 4000);
+      playCustomAudioFile('alert_buon_ngu_som.mp3', 2200);
     }
-  }, [initAudioContext, isMuted, speakVoiceAlert]);
+  }, [initAudioContext, isMuted, playCustomAudioFile]);
 
-  // Level 2 Alert: Urgent warning pulse (Head Drop / Eyes Closed / Face Lost)
+  // Level 2 Alert: Cảnh báo cụ thể theo hành vi của tài xế
   const playLevel2Alert = useCallback((customReason?: PrimaryAlertReason) => {
     if (isMuted) return;
     initAudioContext();
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
 
-    stopActiveAlert();
-
-    const pulse = () => {
-      const now = ctx.currentTime;
-      const osc1 = ctx.createOscillator();
-      const osc2 = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc1.type = 'triangle';
-      osc2.type = 'sawtooth';
-
-      osc1.frequency.setValueAtTime(880, now);       // A5
-      osc1.frequency.setValueAtTime(987.77, now + 0.08); // B5
-
-      osc2.frequency.setValueAtTime(440, now);
-
-      gain.gain.setValueAtTime(0.01, now);
-      gain.gain.linearRampToValueAtTime(0.4, now + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
-
-      osc1.connect(gain);
-      osc2.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc1.start(now);
-      osc2.start(now);
-      osc1.stop(now + 0.32);
-      osc2.stop(now + 0.32);
-    };
-
-    pulse();
-    setTimeout(pulse, 350);
-
-    // Voice announcement tailored to danger reason
     if (customReason === 'HEAD_DROP') {
-      speakVoiceAlert('Cảnh báo! Phát hiện gục đầu, hãy ngẩng đầu lên ngay!', 2000);
+      // 1. alert_guc_dau.mp3: "Cảnh báo! Phát hiện gục đầu, hãy ngẩng cao đầu lên ngay!"
+      playCustomAudioFile('alert_guc_dau.mp3', 2000);
     } else if (customReason === 'HEAD_TILT_SLEEP') {
-      speakVoiceAlert('Cảnh báo! Bạn đang nghiêng đầu nhắm mắt, hãy tỉnh táo lại ngay!', 2000);
-    } else if (customReason === 'FACE_LOST') {
-      speakVoiceAlert('Cảnh báo! Rời mặt khỏi camera, hãy nhìn thẳng vào đường!', 2000);
-    } else if (customReason === 'EYES_CLOSED') {
-      speakVoiceAlert('Cảnh báo buồn ngủ! Vui lòng mở mắt và tập trung!', 2000);
-    } else if (customReason === 'HEAD_TURNED') {
-      speakVoiceAlert('Cảnh báo! Hãy nhìn về phía trước đường!', 2000);
+      // 3. alert_nghieng_dau.mp3: "Cảnh báo! Bạn đang nghiêng đầu nhắm mắt, hãy tỉnh táo lại!"
+      playCustomAudioFile('alert_nghieng_dau.mp3', 2000);
+    } else if (customReason === 'FACE_LOST' || customReason === 'HEAD_TURNED' || customReason === 'EARLY_DISTRACTION') {
+      // 4. alert_roi_mat.mp3 / alert_mat_tap_trung.mp3: "Cảnh báo! Rời mắt khỏi đường, hãy nhìn thẳng phía trước!"
+      playCustomAudioFile('alert_roi_mat.mp3', 2000);
+    } else if (customReason === 'EARLY_DROWSINESS' || customReason === 'DROWSY_DROOP') {
+      // alert_buon_ngu_som.mp3
+      playCustomAudioFile('alert_buon_ngu_som.mp3', 2000);
     } else {
-      speakVoiceAlert('Cảnh báo! Bạn có dấu hiệu buồn ngủ nguy hiểm!', 2500);
+      // 2. alert_nham_mat.mp3: "Cảnh báo! Bạn đang nhắm mắt, hãy mở mắt ra ngay!"
+      playCustomAudioFile('alert_nham_mat.mp3', 2000);
     }
-  }, [initAudioContext, isMuted, stopActiveAlert, speakVoiceAlert]);
+  }, [initAudioContext, isMuted, playCustomAudioFile]);
 
-  // Level 3 Alert: High-Intensity Loud Siren for Danger state
+  // Level 3 Alert: Nguy hiểm cực độ -> alert_khan_cap_lien_tuc.mp3 (Còi hú liên tục + Giọng cảnh báo khẩn cấp)
   const playLevel3Alert = useCallback((customReason?: PrimaryAlertReason) => {
     if (isMuted) return;
     initAudioContext();
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
-
     stopActiveAlert();
-
-    const playSirenBurst = () => {
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = 'sawtooth';
-      
-      // Siren sweep frequency up and down
-      osc.frequency.setValueAtTime(800, now);
-      osc.frequency.linearRampToValueAtTime(1500, now + 0.18);
-      osc.frequency.linearRampToValueAtTime(800, now + 0.36);
-
-      gain.gain.setValueAtTime(0.01, now);
-      gain.gain.linearRampToValueAtTime(0.6, now + 0.02);
-      gain.gain.setValueAtTime(0.6, now + 0.34);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start(now);
-      osc.stop(now + 0.38);
-    };
-
-    playSirenBurst();
-    activeAlarmIntervalRef.current = window.setInterval(playSirenBurst, 400);
-
-    if (customReason === 'HEAD_DROP') {
-      speakVoiceAlert('Nguy hiểm cực độ! Gục đầu lái xe, dừng xe nghỉ ngơi ngay!', 2500);
-    } else if (customReason === 'HEAD_TILT_SLEEP') {
-      speakVoiceAlert('Nguy hiểm cực độ! Nghiêng đầu ngủ gật, hãy mở to mắt và nhìn thẳng ngay!', 2500);
-    } else if (customReason === 'FACE_LOST') {
-      speakVoiceAlert('Nguy hiểm! Mất dấu khuôn mặt, hãy tập trung vào tay lái!', 2500);
-    } else if (customReason === 'EYES_CLOSED') {
-      speakVoiceAlert('Nguy hiểm cực độ! Bạn đang nhắm mắt, hãy mở mắt ra ngay!', 2000);
-    } else {
-      speakVoiceAlert('Nguy hiểm cực độ! Hãy mở mắt và dừng xe ngay lập tức!', 2500);
-    }
-  }, [initAudioContext, isMuted, stopActiveAlert, speakVoiceAlert]);
+    // Kích hoạt còi hú liên tục kèm giọng nói cảnh báo khẩn cấp
+    playCustomAudioFile('alert_khan_cap_lien_tuc.mp3', 0, true);
+  }, [initAudioContext, isMuted, stopActiveAlert, playCustomAudioFile]);
 
   const toggleMute = useCallback(() => {
     setIsMuted((prev) => !prev);
@@ -275,6 +237,12 @@ export function useAudioAlerts() {
     playLevel1Alert,
     playLevel2Alert,
     playLevel3Alert,
+    playEarlyDistractionAlert,
+    playEarlyDrowsinessAlert,
+    playContinuousEmergencyAlert,
+    isPlayingEmergency,
+    playCustomAudioFile,
+    playBeepLevel,
     stopActiveAlert,
     speakVoiceAlert,
     isMuted,

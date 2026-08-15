@@ -110,6 +110,34 @@ export const AlertModal: React.FC<AlertModalProps> = ({
       };
     }
 
+    if (primaryAlertReason === 'EARLY_DISTRACTION') {
+      return {
+        title: 'CẢNH BÁO: PHÁT HIỆN MẤT TẬP TRUNG!',
+        subtitle: 'Bạn đang không nhìn thẳng vào làn đường phía trước.',
+        message: 'Hãy tập trung quan sát đường đi và giữ tầm nhìn hướng về phía trước!',
+        levelText: 'CẢNH BÁO SỚM - MẤT TẬP TRUNG',
+        bgGradient: 'from-amber-950/98 via-slate-950 to-orange-950/95',
+        borderColor: 'border-amber-500',
+        textColor: 'text-amber-400',
+        btnBg: 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold',
+        icon: <AlertTriangle className="w-10 h-10 sm:w-14 sm:h-14 text-amber-400 animate-pulse" />
+      };
+    }
+
+    if (primaryAlertReason === 'EARLY_DROWSINESS' || primaryAlertReason === 'DROWSY_DROOP') {
+      return {
+        title: 'CẢNH BÁO: CHỚM BUỒN NGỦ / MỆT MỎI!',
+        subtitle: 'Độ mở của mắt đang giảm dần hoặc xuất hiện ngáp liên tục.',
+        message: 'Hãy mở to mắt, uống nước hoặc bật điều hòa để giữ tinh thần tỉnh táo!',
+        levelText: 'CẢNH BÁO SỚM - BUỒN NGỦ',
+        bgGradient: 'from-amber-950/98 via-slate-950 to-amber-900/90',
+        borderColor: 'border-amber-500',
+        textColor: 'text-amber-300',
+        btnBg: 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold',
+        icon: <AlertTriangle className="w-10 h-10 sm:w-14 sm:h-14 text-amber-400 animate-bounce" />
+      };
+    }
+
     if (primaryAlertReason === 'HEAD_TURNED') {
       return {
         title: 'CẢNH BÁO: NGOẢNH MẶT RỜI ĐƯỜNG!',

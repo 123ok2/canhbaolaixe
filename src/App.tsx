@@ -8,7 +8,6 @@ import { CalibrationModal } from './components/CalibrationModal';
 import { CameraFeed } from './components/CameraFeed';
 import { CameraPermissionModal } from './components/CameraPermissionModal';
 import { DashboardStats } from './components/DashboardStats';
-import { DemoControlPanel } from './components/DemoControlPanel';
 import { DrowsinessGauge } from './components/DrowsinessGauge';
 import { Header } from './components/Header';
 import { PrivacyHeader } from './components/PrivacyHeader';
@@ -19,7 +18,6 @@ import { useCamera } from './hooks/useCamera';
 import { faceLandmarkService } from './services/FaceLandmarkService';
 import {
   CalibrationData,
-  DemoModeState,
   DrowsinessMetrics,
   DrowsinessState,
   SensitivityLevel,
@@ -36,6 +34,10 @@ export default function App() {
     playLevel1Alert,
     playLevel2Alert,
     playLevel3Alert,
+    playContinuousEmergencyAlert,
+    isPlayingEmergency,
+    playCustomAudioFile,
+    playBeepLevel,
     stopActiveAlert,
     speakVoiceAlert,
     isMuted,
@@ -58,9 +60,6 @@ export default function App() {
 
   const [landmarks, setLandmarks] = useState<any[] | null>(null);
   const [sessionStats, setSessionStats] = useState<SessionStats>(engine.getSessionManager().getStats());
-
-  // Modals & Panels state
-  const [isDemoOpen, setIsDemoOpen] = useState<boolean>(false);
   const [isFaceLandmarkerLoading, setIsFaceLandmarkerLoading] = useState<boolean>(true);
 
   // Sensitivity Setting State (1 to 5, default 3)
@@ -98,27 +97,8 @@ export default function App() {
 
   const handleSensitivityFeedback = useCallback((level: SensitivityLevel) => {
     initAudioContext();
-    // Play a gentle pitch corresponding to level (Level 1: 440Hz -> Level 5: 880Hz)
-    try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (AudioCtx) {
-        const ctx = new AudioCtx();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        const freqMap: Record<SensitivityLevel, number> = { 1: 440, 2: 523.25, 3: 659.25, 4: 783.99, 5: 987.77 };
-        osc.frequency.setValueAtTime(freqMap[level] || 659.25, ctx.currentTime);
-        gain.gain.setValueAtTime(0.01, ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.12);
-      }
-    } catch {
-      // Audio feedback catch
-    }
-  }, [initAudioContext]);
+    playBeepLevel();
+  }, [initAudioContext, playBeepLevel]);
 
   // Initialize MediaPipe FaceLandmarker
   useEffect(() => {
@@ -214,11 +194,6 @@ export default function App() {
     engine.dismissAlertImmediate();
   }, [stopActiveAlert]);
 
-  // Demo Mode Handler
-  const handleSelectDemoMode = useCallback((mode: DemoModeState) => {
-    engine.setDemoMode(mode);
-  }, []);
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col selection:bg-cyan-500 selection:text-slate-950">
       {/* Header Bar */}
@@ -227,7 +202,6 @@ export default function App() {
         score={metrics.score}
         isMuted={isMuted}
         onToggleMute={toggleMute}
-        onOpenDemo={() => setIsDemoOpen(true)}
         onRecalibrate={() => engine.openCalibration()}
         isEnhancedMonitoring={metrics.isEnhancedMonitoring}
         sensitivityLevel={sensitivity}
@@ -279,29 +253,26 @@ export default function App() {
         />
       </main>
 
-      {/* Camera Permission Modal (Shows if permission pending or denied AND DEMO mode is OFF) */}
-      {engine.getDemoMode() === 'OFF' && (cameraState.hasPermission === false || (!cameraState.isStreaming && cameraState.error)) && (
+      {/* Camera Permission Modal (Shows if permission pending or denied) */}
+      {(cameraState.hasPermission === false || (!cameraState.isStreaming && cameraState.error)) && (
         <CameraPermissionModal
           error={cameraState.error}
           onGrantPermission={startCamera}
-          onStartDemo={() => handleSelectDemoMode('NORMAL')}
           isLoading={isFaceLandmarkerLoading}
         />
       )}
 
       {/* Initial Facial Calibration Modal */}
-      {engine.getDemoMode() === 'OFF' && (
-        <CalibrationModal
-          isStreaming={cameraState.isStreaming}
-          hasLandmarks={landmarks !== null && landmarks.length > 0}
-          landmarks={landmarks}
-          calibration={metrics.calibration}
-          stream={stream}
-          videoRef={videoRef}
-          onBeginCalibration={() => engine.beginCalibrationSampling()}
-          onSkip={() => engine.skipCalibration()}
-        />
-      )}
+      <CalibrationModal
+        isStreaming={cameraState.isStreaming}
+        hasLandmarks={landmarks !== null && landmarks.length > 0}
+        landmarks={landmarks}
+        calibration={metrics.calibration}
+        stream={stream}
+        videoRef={videoRef}
+        onBeginCalibration={() => engine.beginCalibrationSampling()}
+        onSkip={() => engine.skipCalibration()}
+      />
 
       {/* Drowsiness Alert Modal (Level 1, Level 2, Level 3) with "TÔI ĐÃ TỈNH" and 'X' Button */}
       <AlertModal
@@ -314,19 +285,6 @@ export default function App() {
         onDismissInstant={handleDismissInstant}
         isMuted={isMuted}
       />
-
-      {/* Demo Simulation Control Panel Modal */}
-      {isDemoOpen && (
-        <DemoControlPanel
-          currentDemoMode={engine.getDemoMode()}
-          onSelectDemoMode={handleSelectDemoMode}
-          onClose={() => setIsDemoOpen(false)}
-          onTestVoice={(text) => {
-            initAudioContext();
-            speakVoiceAlert(text, 0);
-          }}
-        />
-      )}
 
       {/* Compact & Clean Footer */}
       <footer className="border-t border-slate-900 bg-slate-950/95 py-3 px-4 safe-pb text-xs text-slate-400">

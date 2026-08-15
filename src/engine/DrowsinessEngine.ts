@@ -199,13 +199,19 @@ export class DrowsinessEngine {
         targetScore = Math.min(100, targetScore + CONFIG.SCORE_EYE_CLOSED_WEIGHT * closureSec * 0.4 * sensConfig.scoreMultiplier);
       }
     } else if (faceDetected && eyeMetrics.averageEar < this.calibration.closedEarThreshold * 1.25) {
-      if (!primaryAlertReason) primaryAlertReason = 'DROWSY_DROOP';
+      if (!primaryAlertReason) primaryAlertReason = 'EARLY_DROWSINESS';
       targetScore = Math.min(100, targetScore + 6 * sensConfig.scoreMultiplier * (this.isEnhancedMonitoring ? 1.4 : 1.0));
     }
 
-    // 4. Yawn Detection (Ngáp)
+    // 4. Head turn away / Distraction detection (Mất tập trung, nhìn lệch đường khi mắt mở)
+    if (faceDetected && headPose.isTurnedAway && !eyeMetrics.isClosed) {
+      if (!primaryAlertReason) primaryAlertReason = 'EARLY_DISTRACTION';
+      targetScore = Math.max(targetScore, 42 * sensConfig.scoreMultiplier);
+    }
+
+    // 5. Yawn Detection (Ngáp)
     if (yawnMetrics.isYawning) {
-      if (!primaryAlertReason) primaryAlertReason = 'YAWN';
+      if (!primaryAlertReason) primaryAlertReason = 'EARLY_DROWSINESS';
       targetScore = Math.max(targetScore, 48);
     }
 

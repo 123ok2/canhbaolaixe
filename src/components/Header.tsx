@@ -11,7 +11,7 @@ interface HeaderProps {
   score: number;
   isMuted: boolean;
   onToggleMute: () => void;
-  onOpenDemo: () => void;
+  onOpenDemo?: () => void;
   onRecalibrate?: () => void;
   isEnhancedMonitoring: boolean;
   sensitivityLevel?: SensitivityLevel;
@@ -22,7 +22,6 @@ export const Header: React.FC<HeaderProps> = ({
   score,
   isMuted,
   onToggleMute,
-  onOpenDemo,
   onRecalibrate,
   isEnhancedMonitoring,
   sensitivityLevel = 3
@@ -119,17 +118,6 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden md:inline">Hiệu chỉnh</span>
             </button>
           )}
-
-          {/* Demo Simulation Button */}
-          <button
-            onClick={onOpenDemo}
-            id="btn-demo-mode"
-            className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 hover:border-slate-500 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-            title="Chế độ Giả lập / DEMO"
-          >
-            <Activity className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-            <span className="text-[11px] sm:text-xs">DEMO</span>
-          </button>
 
           {/* Audio Mute Button */}
           <button

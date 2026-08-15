@@ -52,6 +52,8 @@ export interface CalibrationData {
 export type PrimaryAlertReason = 
   | 'EYES_CLOSED'
   | 'DROWSY_DROOP'
+  | 'EARLY_DROWSINESS'
+  | 'EARLY_DISTRACTION'
   | 'HEAD_DROP'
   | 'HEAD_TILT_SLEEP'
   | 'HEAD_TURNED'

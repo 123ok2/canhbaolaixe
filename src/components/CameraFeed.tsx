@@ -354,6 +354,12 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
             </div>
           )}
 
+          {headPose.isTurnedAway && (
+            <div className="bg-amber-950/90 text-amber-300 backdrop-blur-md px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border border-amber-700 font-bold animate-pulse text-[10px]">
+              👀 MẤT TẬP TRUNG (QUAY ĐẦU)
+            </div>
+          )}
+
           {(headPose.isHeadForward || headPose.pitch < -10) && (
             <div className={`backdrop-blur-md px-2 py-0.5 rounded-lg border font-bold text-[9px] sm:text-[10px] ${
               eyeMetrics.isClosed
