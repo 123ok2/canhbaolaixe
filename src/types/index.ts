@@ -39,6 +39,26 @@ export interface HeadPoseMetrics {
   isTurnedAway: boolean;
 }
 
+export type DistractionType = 
+  | 'TURN_LEFT'
+  | 'TURN_RIGHT'
+  | 'LOOKING_DOWN'
+  | 'LOOKING_UP'
+  | 'FACE_AWAY'
+  | 'NONE';
+
+export type DistractionLevel = 'NONE' | 'MILD' | 'WARNING' | 'CRITICAL';
+
+export interface DistractionMetrics {
+  isDistracted: boolean;
+  distractionType: DistractionType;
+  distractionDurationMs: number;
+  distractionCount: number;
+  distractionLevel: DistractionLevel;
+  distractionScore: number; // 0 - 100
+  label: string; // e.g. "Quay đầu sang trái", "Cúi đầu nhìn điện thoại", "Tập trung tốt"
+}
+
 export interface CalibrationData {
   isCalibrated: boolean;
   isCalibrating: boolean;    // Whether user clicked "Bắt đầu hiệu chỉnh"
@@ -67,6 +87,7 @@ export interface DrowsinessMetrics {
   eyeMetrics: EyeMetrics;
   yawnMetrics: YawnMetrics;
   headPose: HeadPoseMetrics;
+  distractionMetrics: DistractionMetrics;
   calibration: CalibrationData;
   isEnhancedMonitoring: boolean; // Activated after user clicks "TÔI ĐÃ TỈNH"
   faceDetected: boolean;
@@ -98,6 +119,7 @@ export interface SessionStats {
   longEyeClosureCount: number;   // Eyes closed > 0.8s
   yawnCount: number;             // Total yawns
   headDropCount: number;         // Total head drop events
+  distractionCount: number;      // Total distraction events
   alertLevel1Count: number;
   alertLevel2Count: number;
   alertLevel3Count: number;

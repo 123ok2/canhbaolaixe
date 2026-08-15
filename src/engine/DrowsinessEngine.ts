@@ -67,6 +67,7 @@ export class DrowsinessEngine {
     isNewLongClosure: boolean;
     isNewYawn: boolean;
     isNewHeadDrop: boolean;
+    isNewDistraction: boolean;
     stateChanged: boolean;
     previousState: DrowsinessState;
   } {
@@ -102,12 +103,18 @@ export class DrowsinessEngine {
     const { metrics: eyeMetrics, isLongClosureEvent } = this.eyeAnalyzer.analyze(landmarks, nowMs, this.calibration);
     const { metrics: yawnMetrics, isNewYawnDetected } = this.yawnAnalyzer.analyze(landmarks, nowMs, this.calibration);
     // Strict eye closed check for head tilt: must be actually closed (EAR < closed threshold)
-    const { metrics: headPose, isNewHeadDropDetected } = this.headPoseAnalyzer.analyze(landmarks, nowMs, eyeMetrics.isClosed);
+    const {
+      metrics: headPose,
+      distractionMetrics,
+      isNewHeadDropDetected,
+      isNewDistractionDetected
+    } = this.headPoseAnalyzer.analyze(landmarks, nowMs, eyeMetrics.isClosed, faceDetected);
 
     // Record session events
     if (isLongClosureEvent) this.sessionManager.recordLongClosure();
     if (isNewYawnDetected) this.sessionManager.recordYawn();
     if (isNewHeadDropDetected) this.sessionManager.recordHeadDrop();
+    if (isNewDistractionDetected) this.sessionManager.recordDistraction();
 
     // Track wide open eyes: mở to mắt hơn bình thường (EAR mở rõ ràng)
     const wideEarThreshold = this.calibration.isCalibrated
@@ -132,8 +139,8 @@ export class DrowsinessEngine {
       this.wideEyesDurationMs = 0;
     }
 
-    // Track consecutive frames where user is completely alert (eyes open, mouth closed, head straight, face detected)
-    const isFullyAlert = faceDetected && !eyeMetrics.isClosed && !yawnMetrics.isYawning && !headPose.isHeadDropped && !headPose.isTurnedAway;
+    // Track consecutive frames where user is completely alert (eyes open, mouth closed, head straight, face detected, not distracted)
+    const isFullyAlert = faceDetected && !eyeMetrics.isClosed && !yawnMetrics.isYawning && !headPose.isHeadDropped && !headPose.isTurnedAway && !distractionMetrics.isDistracted;
     if (isFullyAlert) {
       this.alertFramesStreak++;
     } else {
@@ -203,10 +210,22 @@ export class DrowsinessEngine {
       targetScore = Math.min(100, targetScore + 6 * sensConfig.scoreMultiplier * (this.isEnhancedMonitoring ? 1.4 : 1.0));
     }
 
-    // 4. Head turn away / Distraction detection (Mất tập trung, nhìn lệch đường khi mắt mở)
-    if (faceDetected && headPose.isTurnedAway && !eyeMetrics.isClosed) {
-      if (!primaryAlertReason) primaryAlertReason = 'EARLY_DISTRACTION';
-      targetScore = Math.max(targetScore, 42 * sensConfig.scoreMultiplier);
+    // 4. Distraction & Inattention Early Warning (Cảnh báo sớm Mất tập trung: Quay đầu, Cúi đầu nhìn điện thoại khi mắt mở)
+    if (faceDetected && distractionMetrics.isDistracted) {
+      if (distractionMetrics.distractionLevel === 'CRITICAL') {
+        // Rời đường > 3.0 giây -> Nguy cơ tai nạn cao
+        primaryAlertReason = 'EARLY_DISTRACTION';
+        immediateHighRisk = true;
+        targetScore = Math.max(targetScore, 78);
+      } else if (distractionMetrics.distractionLevel === 'WARNING') {
+        // Rời đường >= 1.6 giây -> Kích hoạt cảnh báo giọng nói sớm: "Chú ý! Bạn đang mất tập trung, hãy nhìn thẳng phía trước!"
+        if (!primaryAlertReason) primaryAlertReason = 'EARLY_DISTRACTION';
+        targetScore = Math.max(targetScore, 50 * sensConfig.scoreMultiplier);
+      } else if (distractionMetrics.distractionLevel === 'MILD') {
+        // Rời đường >= 0.8 giây -> Cảnh báo thị giác sớm HUD
+        if (!primaryAlertReason) primaryAlertReason = 'EARLY_DISTRACTION';
+        targetScore = Math.max(targetScore, 28 * sensConfig.scoreMultiplier);
+      }
     }
 
     // 5. Yawn Detection (Ngáp)
@@ -270,6 +289,7 @@ export class DrowsinessEngine {
         eyeMetrics,
         yawnMetrics,
         headPose,
+        distractionMetrics,
         calibration: { ...this.calibration },
         isEnhancedMonitoring: this.isEnhancedMonitoring,
         faceDetected,
@@ -281,6 +301,7 @@ export class DrowsinessEngine {
       isNewLongClosure: isLongClosureEvent,
       isNewYawn: isNewYawnDetected,
       isNewHeadDrop: isNewHeadDropDetected,
+      isNewDistraction: isNewDistractionDetected,
       stateChanged,
       previousState
     };
@@ -491,6 +512,15 @@ export class DrowsinessEngine {
           isTiltRight: false,
           isTurnedAway
         },
+        distractionMetrics: {
+          isDistracted: false,
+          distractionType: 'NONE' as import('../types').DistractionType,
+          distractionDurationMs: 0,
+          distractionCount: 0,
+          distractionLevel: 'NONE' as import('../types').DistractionLevel,
+          distractionScore: 0,
+          label: 'Tập trung tốt'
+        },
         calibration: { ...this.calibration, isCalibrated: true },
         isEnhancedMonitoring: this.isEnhancedMonitoring,
         faceDetected: true,
@@ -502,6 +532,7 @@ export class DrowsinessEngine {
       isNewLongClosure: eyeClosed,
       isNewYawn: isYawning,
       isNewHeadDrop: isHeadDropped,
+      isNewDistraction: false,
       stateChanged: this.currentState !== previousState,
       previousState
     };

@@ -9,6 +9,7 @@ export class SessionManager {
   private longEyeClosureCount: number = 0;
   private yawnCount: number = 0;
   private headDropCount: number = 0;
+  private distractionCount: number = 0;
   private alertLevel1Count: number = 0;
   private alertLevel2Count: number = 0;
   private alertLevel3Count: number = 0;
@@ -65,6 +66,10 @@ export class SessionManager {
     this.headDropCount++;
   }
 
+  public recordDistraction(): void {
+    this.distractionCount++;
+  }
+
   public recordAlertLevel(level: 1 | 2 | 3): void {
     if (level === 1) this.alertLevel1Count++;
     if (level === 2) this.alertLevel2Count++;
@@ -85,6 +90,7 @@ export class SessionManager {
       longEyeClosureCount: this.longEyeClosureCount,
       yawnCount: this.yawnCount,
       headDropCount: this.headDropCount,
+      distractionCount: this.distractionCount,
       alertLevel1Count: this.alertLevel1Count,
       alertLevel2Count: this.alertLevel2Count,
       alertLevel3Count: this.alertLevel3Count,
@@ -99,6 +105,7 @@ export class SessionManager {
     this.longEyeClosureCount = 0;
     this.yawnCount = 0;
     this.headDropCount = 0;
+    this.distractionCount = 0;
     this.alertLevel1Count = 0;
     this.alertLevel2Count = 0;
     this.alertLevel3Count = 0;

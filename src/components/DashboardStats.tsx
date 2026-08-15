@@ -3,7 +3,7 @@
  * Fully Optimized for Mobile & Desktop
  */
 
-import { Activity, AlertTriangle, Clock, Eye, Moon, Shield, Smile } from 'lucide-react';
+import { Activity, AlertTriangle, Clock, Compass, Eye, Moon, Shield, Smile } from 'lucide-react';
 import React from 'react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { SessionStats } from '../types';
@@ -56,8 +56,8 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({ stats, currentSc
 
   return (
     <div className="space-y-3 sm:space-y-4">
-      {/* 6 Key Metrics Grid (2 columns on mobile, 3 on tablet, 6 on desktop) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+      {/* Key Metrics Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-3">
         {/* 1. Driving Duration */}
         <div className="bg-slate-900/90 border border-slate-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 shadow-lg flex flex-col justify-between">
           <div className="flex items-center gap-1.5 text-slate-400 text-[11px] sm:text-xs font-medium">
@@ -105,7 +105,7 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({ stats, currentSc
             <div className="w-5 h-5 rounded-md bg-purple-500/10 text-purple-400 flex items-center justify-center shrink-0">
               <Moon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
             </div>
-            <span className="truncate">Số lần gục đầu</span>
+            <span className="truncate">Gục đầu ngủ</span>
           </div>
           <div className="text-lg sm:text-xl font-black font-mono text-purple-300 mt-1 flex items-baseline gap-1">
             {stats.headDropCount}
@@ -113,7 +113,21 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({ stats, currentSc
           </div>
         </div>
 
-        {/* 5. Danger Duration */}
+        {/* 5. Distractions (Mất tập trung) */}
+        <div className="bg-slate-900/90 border border-slate-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 shadow-lg flex flex-col justify-between">
+          <div className="flex items-center gap-1.5 text-slate-400 text-[11px] sm:text-xs font-medium">
+            <div className="w-5 h-5 rounded-md bg-orange-500/10 text-orange-400 flex items-center justify-center shrink-0">
+              <Compass className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+            </div>
+            <span className="truncate">Mất tập trung</span>
+          </div>
+          <div className="text-lg sm:text-xl font-black font-mono text-orange-300 mt-1 flex items-baseline gap-1">
+            {stats.distractionCount || 0}
+            <span className="text-[10px] text-slate-500 font-normal font-sans">lần</span>
+          </div>
+        </div>
+
+        {/* 6. Danger Duration */}
         <div className="bg-slate-900/90 border border-slate-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 shadow-lg flex flex-col justify-between">
           <div className="flex items-center gap-1.5 text-slate-400 text-[11px] sm:text-xs font-medium">
             <div className="w-5 h-5 rounded-md bg-red-500/10 text-red-400 flex items-center justify-center shrink-0">
@@ -127,8 +141,8 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({ stats, currentSc
           </div>
         </div>
 
-        {/* 6. Safety Level */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 shadow-lg flex flex-col justify-between">
+        {/* 7. Safety Level */}
+        <div className="bg-slate-900/90 border border-slate-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 shadow-lg flex flex-col justify-between col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-1">
           <div className="flex items-center gap-1.5 text-slate-400 text-[11px] sm:text-xs font-medium">
             <div className="w-5 h-5 rounded-md bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
               <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5" />

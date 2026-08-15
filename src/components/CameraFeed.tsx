@@ -4,10 +4,10 @@
  * Fully Optimized for Mobile & Desktop
  */
 
-import { Camera, Eye, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, Camera, Compass, Eye, RefreshCw, Smartphone } from 'lucide-react';
 import React, { useEffect, useRef } from 'react';
 import { CONFIG } from '../config/constants';
-import { CalibrationData, DrowsinessState, EyeMetrics, HeadPoseMetrics, SensitivityLevel, YawnMetrics } from '../types';
+import { CalibrationData, DistractionMetrics, DrowsinessState, EyeMetrics, HeadPoseMetrics, SensitivityLevel, YawnMetrics } from '../types';
 
 interface Point3D {
   x: number;
@@ -25,6 +25,7 @@ interface CameraFeedProps {
   eyeMetrics: EyeMetrics;
   yawnMetrics: YawnMetrics;
   headPose: HeadPoseMetrics;
+  distractionMetrics?: DistractionMetrics;
   faceDetected?: boolean;
   primaryAlertReason?: import('../types').PrimaryAlertReason;
   sensitivityLevel?: SensitivityLevel;
@@ -42,6 +43,7 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
   eyeMetrics,
   yawnMetrics,
   headPose,
+  distractionMetrics,
   faceDetected = true,
   primaryAlertReason,
   sensitivityLevel = 3,
@@ -79,21 +81,23 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
     let glowColor = 'rgba(6, 182, 212, 0.7)';
     let meshAlpha = 0.22;
 
-    if (state === DrowsinessState.TIRED) {
-      primaryColor = '#f59e0b'; // Amber
-      secondaryColor = '#fbbf24';
-      glowColor = 'rgba(245, 158, 11, 0.7)';
-      meshAlpha = 0.3;
-    } else if (state === DrowsinessState.WARNING) {
-      primaryColor = '#f97316'; // Orange
-      secondaryColor = '#fb923c';
-      glowColor = 'rgba(249, 115, 22, 0.8)';
-      meshAlpha = 0.35;
-    } else if (state === DrowsinessState.DANGER) {
+    const isDistractedNow = distractionMetrics?.isDistracted;
+
+    if (state === DrowsinessState.DANGER) {
       primaryColor = '#ef4444'; // Red
       secondaryColor = '#f87171';
       glowColor = 'rgba(239, 68, 68, 0.85)';
       meshAlpha = 0.45;
+    } else if (state === DrowsinessState.WARNING || isDistractedNow) {
+      primaryColor = '#f97316'; // Orange
+      secondaryColor = '#fb923c';
+      glowColor = 'rgba(249, 115, 22, 0.8)';
+      meshAlpha = 0.35;
+    } else if (state === DrowsinessState.TIRED) {
+      primaryColor = '#f59e0b'; // Amber
+      secondaryColor = '#fbbf24';
+      glowColor = 'rgba(245, 158, 11, 0.7)';
+      meshAlpha = 0.3;
     }
 
     ctx.save();
@@ -194,9 +198,9 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
       const endY = startY - vectorLength * Math.sin(radPitch);
 
       ctx.save();
-      ctx.strokeStyle = '#38bdf8';
+      ctx.strokeStyle = isDistractedNow ? '#f97316' : '#38bdf8';
       ctx.lineWidth = 2.4;
-      ctx.shadowColor = '#38bdf8';
+      ctx.shadowColor = isDistractedNow ? '#f97316' : '#38bdf8';
       ctx.shadowBlur = 8;
       ctx.beginPath();
       ctx.moveTo(startX, startY);
@@ -212,10 +216,24 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
     }
 
     ctx.restore();
-  }, [landmarks, isStreaming, state, eyeMetrics, yawnMetrics, headPose, videoRef]);
+  }, [landmarks, isStreaming, state, eyeMetrics, yawnMetrics, headPose, distractionMetrics, videoRef]);
 
   // Status Badge Helper
   const getStatusBadge = () => {
+    if (distractionMetrics?.isDistracted) {
+      if (distractionMetrics.distractionLevel === 'CRITICAL') {
+        return {
+          bg: 'bg-red-950/95 border-red-600 text-red-200 animate-pulse',
+          text: 'MẤT TẬP TRUNG NGUY HIỂM',
+          dot: 'bg-red-500 animate-ping'
+        };
+      }
+      return {
+        bg: 'bg-orange-950/95 border-orange-600/90 text-orange-300 animate-pulse',
+        text: 'CẢNH BÁO MẤT TẬP TRUNG',
+        dot: 'bg-orange-400'
+      };
+    }
     switch (state) {
       case DrowsinessState.ALERT:
         return {
@@ -272,8 +290,31 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
   const currentLevel: SensitivityLevel = (sensitivityLevel === 1 || sensitivityLevel === 2 || sensitivityLevel === 4 || sensitivityLevel === 5) ? sensitivityLevel : 3;
   const currentTheme = getSensitivityTheme(currentLevel);
 
+  // Helper icon for distraction type
+  const renderDistractionIcon = () => {
+    if (!distractionMetrics) return null;
+    switch (distractionMetrics.distractionType) {
+      case 'TURN_LEFT':
+        return <ArrowLeft className="w-4 h-4 text-orange-400 animate-pulse" />;
+      case 'TURN_RIGHT':
+        return <ArrowRight className="w-4 h-4 text-orange-400 animate-pulse" />;
+      case 'LOOKING_DOWN':
+        return <Smartphone className="w-4 h-4 text-amber-400 animate-bounce" />;
+      case 'LOOKING_UP':
+        return <Compass className="w-4 h-4 text-amber-400 animate-spin" />;
+      default:
+        return <AlertTriangle className="w-4 h-4 text-orange-400" />;
+    }
+  };
+
   return (
-    <div className="relative w-full aspect-[4/3] sm:aspect-[16/10] max-h-[56vh] sm:max-h-none bg-slate-950 rounded-2xl sm:rounded-3xl overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center group">
+    <div className={`relative w-full aspect-[4/3] sm:aspect-[16/10] max-h-[56vh] sm:max-h-none bg-slate-950 rounded-2xl sm:rounded-3xl overflow-hidden border shadow-2xl flex items-center justify-center group transition-colors duration-300 ${
+      distractionMetrics?.isDistracted
+        ? distractionMetrics.distractionLevel === 'CRITICAL'
+          ? 'border-red-500 shadow-red-950/50'
+          : 'border-orange-500 shadow-orange-950/40'
+        : 'border-slate-800'
+    }`}>
       {/* HTML5 Video Element */}
       <video
         ref={videoRef}
@@ -344,8 +385,8 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
           </div>
 
           <div className="bg-slate-950/85 backdrop-blur-md px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border border-slate-800/80 flex items-center gap-1.5 text-[9px] sm:text-[10px] text-slate-300 shadow-md">
+            <span>Quay: {headPose.yaw > 0 ? `+${headPose.yaw}` : headPose.yaw}°</span>
             <span>Cúi: {headPose.pitch}°</span>
-            <span>Nghiêng: {headPose.roll}°</span>
           </div>
 
           {yawnMetrics.isYawning && (
@@ -364,11 +405,41 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
             <div className={`backdrop-blur-md px-2 py-0.5 rounded-lg border font-bold text-[9px] sm:text-[10px] ${
               eyeMetrics.isClosed
                 ? 'bg-red-950/90 text-red-300 border-red-700 animate-pulse'
-                : 'bg-slate-900/80 text-emerald-300 border-slate-700'
+                : 'bg-slate-900/80 text-amber-300 border-slate-700'
             }`}>
-              {eyeMetrics.isClosed ? '⚠️ GỤC ĐẦU NGỦ' : '⤵ Cúi đầu (Mắt mở)'}
+              {eyeMetrics.isClosed ? '⚠️ GỤC ĐẦU NGỦ' : '📱 Cúi nhìn (Mắt mở)'}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Dynamic Early Distraction HUD Banner */}
+      {isStreaming && distractionMetrics?.isDistracted && (
+        <div className="absolute top-12 sm:top-14 inset-x-3 sm:inset-x-6 z-25 flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-950/90 border border-orange-500/80 backdrop-blur-md shadow-xl animate-fade-in">
+          <div className="flex items-center gap-2">
+            <div className="p-1 rounded-lg bg-orange-500/20 text-orange-400">
+              {renderDistractionIcon()}
+            </div>
+            <div>
+              <div className="text-[11px] sm:text-xs font-bold text-orange-300 uppercase tracking-wide flex items-center gap-1.5">
+                <span>CẢNH BÁO MẤT TẬP TRUNG</span>
+                <span className="text-[10px] font-mono font-normal text-orange-200/80 bg-orange-950/80 px-1.5 py-0.2 rounded border border-orange-800/80">
+                  {(distractionMetrics.distractionDurationMs / 1000).toFixed(1)}s
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-300 font-medium">
+                {distractionMetrics.label} — Hãy nhìn thẳng quan sát đường!
+              </div>
+            </div>
+          </div>
+          <div className="w-12 sm:w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden shrink-0">
+            <div
+              className={`h-full transition-all duration-200 ${
+                distractionMetrics.distractionLevel === 'CRITICAL' ? 'bg-red-500' : 'bg-orange-400'
+              }`}
+              style={{ width: `${Math.min(100, (distractionMetrics.distractionDurationMs / 3000) * 100)}%` }}
+            />
+          </div>
         </div>
       )}
 
@@ -386,11 +457,23 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
 
       {/* Ultra-compact Integrated In-Camera Floating Bar - 100% Fully Transparent HUD Style */}
       <div className="absolute inset-x-2.5 sm:inset-x-3 bottom-2 sm:bottom-2.5 z-20 flex items-center justify-between gap-1.5 sm:gap-2 px-1 py-0.5 bg-transparent border-0 text-[11px]">
-        {/* Left: Minimal Face State */}
+        {/* Left: Minimal Face State & Attention */}
         <div className="flex items-center gap-1.5 shrink-0 px-1 sm:px-2 py-0.5 rounded-md bg-transparent">
-          <span className={`w-2 h-2 rounded-full shrink-0 shadow-sm ${faceDetected ? 'bg-emerald-400 animate-pulse' : 'bg-red-500 animate-ping'}`} />
-          <span className={`text-[10px] sm:text-[11px] font-bold drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] ${faceDetected ? 'text-emerald-300' : 'text-red-400'}`}>
-            {faceDetected ? 'Mặt: Chuẩn' : 'Mất dấu mặt'}
+          <span className={`w-2 h-2 rounded-full shrink-0 shadow-sm ${
+            faceDetected
+              ? distractionMetrics?.isDistracted ? 'bg-orange-400 animate-pulse' : 'bg-emerald-400 animate-pulse'
+              : 'bg-red-500 animate-ping'
+          }`} />
+          <span className={`text-[10px] sm:text-[11px] font-bold drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] ${
+            faceDetected
+              ? distractionMetrics?.isDistracted ? 'text-orange-300' : 'text-emerald-300'
+              : 'text-red-400'
+          }`}>
+            {faceDetected
+              ? distractionMetrics?.isDistracted
+                ? distractionMetrics.label
+                : 'Mặt: Nhìn thẳng'
+              : 'Mất dấu mặt'}
           </span>
         </div>
 

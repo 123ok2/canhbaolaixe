@@ -34,6 +34,8 @@ export default function App() {
     playLevel1Alert,
     playLevel2Alert,
     playLevel3Alert,
+    playEarlyDistractionAlert,
+    playEarlyDrowsinessAlert,
     playContinuousEmergencyAlert,
     isPlayingEmergency,
     playCustomAudioFile,
@@ -152,6 +154,12 @@ export default function App() {
           const newStats = engine.getSessionManager().getStats();
           setSessionStats(newStats);
 
+          // Early Distraction audio alert trigger
+          if (result.isNewDistraction) {
+            initAudioContext();
+            playEarlyDistractionAlert();
+          }
+
           // Immediate Alert triggers on state change or danger
           if (result.stateChanged) {
             initAudioContext();
@@ -180,7 +188,7 @@ export default function App() {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [cameraState.isStreaming, videoRef, initAudioContext, playLevel1Alert, playLevel2Alert, playLevel3Alert, stopActiveAlert]);
+  }, [cameraState.isStreaming, videoRef, initAudioContext, playEarlyDistractionAlert, playLevel1Alert, playLevel2Alert, playLevel3Alert, stopActiveAlert]);
 
   // "TÔI ĐÃ TỈNH" Click Handler
   const handleConfirmAwake = useCallback(() => {
@@ -226,6 +234,7 @@ export default function App() {
               eyeMetrics={metrics.eyeMetrics}
               yawnMetrics={metrics.yawnMetrics}
               headPose={metrics.headPose}
+              distractionMetrics={metrics.distractionMetrics}
               faceDetected={metrics.faceDetected}
               primaryAlertReason={metrics.primaryAlertReason}
               sensitivityLevel={sensitivity}
