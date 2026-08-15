@@ -1,5 +1,5 @@
 /**
- * Head Pose Detection Engine - Estimates Pitch, Yaw, Roll and Head Drop events
+ * Head Pose Detection Engine - Estimates Pitch, Yaw, Roll and Robust Head Drop events
  */
 
 import { CONFIG } from '../config/constants';
@@ -18,7 +18,14 @@ export class HeadPoseAnalyzer {
   private isCurrentlyDropped: boolean = false;
   private dropRecordedForThisSession: boolean = false;
 
-  public analyze(landmarks: Point3D[] | null, nowMs: number): { metrics: HeadPoseMetrics; isNewHeadDropDetected: boolean } {
+  // Debounce for momentary head posture flicker
+  private headRecoveredSinceMs: number = 0;
+
+  public analyze(
+    landmarks: Point3D[] | null,
+    nowMs: number,
+    isEyeClosed: boolean = false
+  ): { metrics: HeadPoseMetrics; isNewHeadDropDetected: boolean } {
     if (!landmarks || landmarks.length < 400) {
       return {
         metrics: {
@@ -73,11 +80,11 @@ export class HeadPoseAnalyzer {
 
     // Neutral baseline: upperToLowerRatio ~0.42, lowerSegY ~0.90, totalHeightRatio ~1.80
     // When head nods down (gục đầu về phía trước):
-    // upperToLowerRatio increases (>0.60), lowerSegY shrinks (<0.70), zDiff becomes negative (< -0.03)
-    const pitchFromRatio = (0.42 - upperToLowerRatio) * 75;
+    // upperToLowerRatio increases (>0.55), lowerSegY shrinks (<0.75), zDiff becomes negative (< -0.02)
+    const pitchFromRatio = (0.42 - upperToLowerRatio) * 70;
     const pitchFromLower = (lowerSegY - 0.90) * 45;
     const pitchFromHeight = (totalHeightRatio - 1.80) * 35;
-    const pitchFromZ = (zDiff < 0) ? zDiff * 150 : zDiff * 60;
+    const pitchFromZ = (zDiff < 0) ? zDiff * 140 : zDiff * 55;
 
     const rawPitch = pitchFromRatio * 0.40 + pitchFromLower * 0.30 + pitchFromHeight * 0.15 + pitchFromZ * 0.15;
     const pitchAngle = Math.max(-60, Math.min(60, rawPitch));
@@ -99,15 +106,22 @@ export class HeadPoseAnalyzer {
       poseType = yawAngle < 0 ? 'TURN_LEFT' : 'TURN_RIGHT';
     }
 
-    const isPoseUnsafe = isHeadForward || isTiltLeft || isTiltRight || isTurnedAway;
+    // QUY TẮC CỐT LÕI: CỨ THẤY CÓ MẮT MỞ LÀ AN TOÀN
+    // Gục đầu chúi xuống (Head Forward) hay Nghiêng đầu (Tilt) chỉ tính là tư thế nguy hiểm/ngủ gục khi ĐỒNG THỜI MẮT NHẮM
+    const isTiltingSideways = isTiltLeft || isTiltRight;
+    const isForwardUnsafe = isHeadForward && isEyeClosed;
+    const isTiltUnsafe = isTiltingSideways && isEyeClosed;
+    const isPoseUnsafe = isForwardUnsafe || isTiltUnsafe;
     let isNewHeadDropDetected = false;
 
     if (isPoseUnsafe) {
+      this.headRecoveredSinceMs = 0;
       if (this.lastHeadDropTimeMs === 0) {
         this.lastHeadDropTimeMs = nowMs;
       }
       this.currentHeadDropDurationMs = nowMs - this.lastHeadDropTimeMs;
 
+      // Threshold: >= 350ms in drop posture with closed eyes
       if (this.currentHeadDropDurationMs >= CONFIG.MIN_HEAD_DROP_DURATION_MS) {
         this.isCurrentlyDropped = true;
         if (!this.dropRecordedForThisSession) {
@@ -117,10 +131,24 @@ export class HeadPoseAnalyzer {
         }
       }
     } else {
-      this.lastHeadDropTimeMs = 0;
-      this.currentHeadDropDurationMs = 0;
-      this.isCurrentlyDropped = false;
-      this.dropRecordedForThisSession = false;
+      // 200ms debounce to prevent momentary landmark fluctuation from resetting head drop episode
+      if (this.lastHeadDropTimeMs > 0) {
+        if (this.headRecoveredSinceMs === 0) {
+          this.headRecoveredSinceMs = nowMs;
+        }
+
+        if (nowMs - this.headRecoveredSinceMs > 200) {
+          this.lastHeadDropTimeMs = 0;
+          this.currentHeadDropDurationMs = 0;
+          this.isCurrentlyDropped = false;
+          this.dropRecordedForThisSession = false;
+          this.headRecoveredSinceMs = 0;
+        }
+      } else {
+        this.headRecoveredSinceMs = 0;
+        this.currentHeadDropDurationMs = 0;
+        this.isCurrentlyDropped = false;
+      }
     }
 
     return {
@@ -151,5 +179,6 @@ export class HeadPoseAnalyzer {
     this.totalHeadDrops = 0;
     this.isCurrentlyDropped = false;
     this.dropRecordedForThisSession = false;
+    this.headRecoveredSinceMs = 0;
   }
 }

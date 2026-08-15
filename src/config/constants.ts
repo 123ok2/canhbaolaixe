@@ -9,36 +9,109 @@ export const CONFIG = {
   // Rolling Window Size for smoothing noise and anti-false-positive filtering
   ROLLING_WINDOW_SIZE: 30, // ~1-1.2 seconds of frames
   
-  // Default thresholds (before user calibration)
-  DEFAULT_EAR_CLOSED_THRESHOLD: 0.18, // EAR below this is considered eye closed (tuned for phone vertical camera)
-  EAR_CALIBRATION_RATIO: 0.58,        // Closed threshold is 58% of open-eye baseline
-  MIN_EYE_CLOSE_ALERT_MS: 900,        // Eyes closed >= 900ms triggers drowsiness accumulation
-  SEVERE_EYE_CLOSE_ALERT_MS: 1800,    // Eyes closed >= 1.8s triggers immediate severe alert
+  // Default thresholds (before user calibration) - Tuned for real-world webcam accuracy & sensitivity
+  DEFAULT_EAR_CLOSED_THRESHOLD: 0.215, // EAR below this is considered eye closed (sensitive & accurate)
+  EAR_CALIBRATION_RATIO: 0.68,        // Closed threshold is 68% of open-eye baseline
+  MIN_EYE_CLOSE_ALERT_MS: 480,        // Eyes closed >= 480ms counts as a drowsy long eye closure & triggers warning
+  SEVERE_EYE_CLOSE_ALERT_MS: 1200,    // Eyes closed >= 1.2s triggers immediate severe DANGER alert
   
   // Yawn Detection Thresholds
-  DEFAULT_MAR_YAWN_THRESHOLD: 0.65,   // Mouth Aspect Ratio above this is mouth open (avoids talking/smiling triggers)
-  MIN_YAWN_DURATION_MS: 2200,         // Mouth open >= 2.2s counts as a genuine yawn
+  DEFAULT_MAR_YAWN_THRESHOLD: 0.48,   // Mouth Aspect Ratio above this is mouth open for yawning
+  MIN_YAWN_DURATION_MS: 1000,         // Mouth open >= 1.0s counts as a genuine yawn
   
   // Head Drop / Pitch / Tilt Detection
-  HEAD_DROP_PITCH_THRESHOLD: -18,     // Pitch angle (degrees) down threshold (tăng từ -10 lên -18 độ tránh góc nhìn từ dưới lên của điện thoại)
-  HEAD_TILT_ROLL_THRESHOLD: 24,       // Roll angle (degrees) side tilt threshold
-  HEAD_TURN_YAW_THRESHOLD: 32,        // Yaw angle (degrees) turn threshold
-  MIN_HEAD_DROP_DURATION_MS: 700,     // Head down/tilted >= 0.70s counts as head drop event (tăng từ 0.3s)
+  HEAD_DROP_PITCH_THRESHOLD: -10,     // Pitch angle (degrees) down threshold (gục đầu xuống)
+  HEAD_TILT_ROLL_THRESHOLD: 17,       // Roll angle (degrees) side tilt threshold (nghiêng đầu)
+  HEAD_TURN_YAW_THRESHOLD: 26,        // Yaw angle (degrees) turn threshold (quay mặt đi)
+  MIN_HEAD_DROP_DURATION_MS: 350,     // Head down/tilted >= 0.35s triggers head drop event
+  
+  // Lost Face / Distraction Detection
+  FACE_LOST_WARNING_MS: 800,          // No face detected for >= 800ms triggers immediate warning
+  FACE_LOST_DANGER_MS: 2000,          // No face detected for >= 2.0s triggers severe danger alert
   
   // Scoring Weights (0 - 100)
-  SCORE_DECAY_RATE: 0.90,            // Score naturally decays faster when alert
-  SCORE_EYE_CLOSED_WEIGHT: 30,       // Added per second of eye closure
-  SCORE_YAWN_WEIGHT: 20,             // Added per detected yawn
-  SCORE_HEAD_DROP_WEIGHT: 25,        // Added per head drop/tilt event
+  SCORE_DECAY_RATE: 0.88,            // Score naturally decays when alert
+  SCORE_EYE_CLOSED_WEIGHT: 45,       // Added per second of eye closure
+  SCORE_YAWN_WEIGHT: 25,             // Added per detected yawn
+  SCORE_HEAD_DROP_WEIGHT: 35,        // Added per head drop/tilt event
   
   // Score State Boundaries
-  SCORE_STATE_TIRED: 30,              // 30+: Early warning state (tăng từ 20 để tránh báo ảo)
-  SCORE_STATE_WARNING: 60,            // 60+: Nguy cơ buồn ngủ cao
-  SCORE_STATE_DANGER: 82,             // 82+: Cực kỳ nguy hiểm
-  HYSTERESIS_MARGIN: 6,               // Score must drop 6 points below threshold to downgrade state
+  SCORE_STATE_TIRED: 28,              // 28+: Early warning state
+  SCORE_STATE_WARNING: 55,            // 55+: Nguy cơ buồn ngủ cao
+  SCORE_STATE_DANGER: 80,             // 80+: Cực kỳ nguy hiểm
+  HYSTERESIS_MARGIN: 5,               // Score must drop 5 points below threshold to downgrade state
   
   // Calibration duration in frames
-  CALIBRATION_FRAMES_REQUIRED: 45,    // ~1.5 to 2 seconds of looking at camera
+  CALIBRATION_FRAMES_REQUIRED: 40,    // ~1.5 seconds of looking at camera
+  
+  // Sensitivity presets mapping (Levels 1 to 5)
+  SENSITIVITY_PRESETS: {
+    1: {
+      level: 1,
+      name: 'Rất thấp',
+      badge: 'Thư thái (0.6x)',
+      description: 'Dung sai lớn nhất, giảm tối đa báo động giả khi đi đường xóc, nói chuyện nhiều.',
+      recommendedFor: 'Đường nội đô gồ ghề, lúc nói chuyện, dừng đỗ nhiều',
+      minEyeCloseMs: 850,
+      minHeadDropMs: 550,
+      pitchThreshold: -15,
+      faceLostMs: 1400,
+      yawnDurationMs: 1600,
+      scoreMultiplier: 0.7
+    },
+    2: {
+      level: 2,
+      name: 'Thấp',
+      badge: 'Êm dịu (0.8x)',
+      description: 'Giảm độ nhạy âm thanh, cảnh báo khi mắt nhắm rõ rệt hoặc gục đầu lâu.',
+      recommendedFor: 'Lái xe ban ngày đường thông thoáng',
+      minEyeCloseMs: 650,
+      minHeadDropMs: 450,
+      pitchThreshold: -13,
+      faceLostMs: 1100,
+      yawnDurationMs: 1300,
+      scoreMultiplier: 0.85
+    },
+    3: {
+      level: 3,
+      name: 'Tiêu chuẩn',
+      badge: 'Khuyên dùng (1.0x)',
+      description: 'Cân bằng hoàn hảo giữa độ chính xác và tốc độ phản ứng cảnh báo.',
+      recommendedFor: 'Tất cả các điều kiện lái xe thông thường',
+      minEyeCloseMs: 480,
+      minHeadDropMs: 350,
+      pitchThreshold: -10,
+      faceLostMs: 800,
+      yawnDurationMs: 1000,
+      scoreMultiplier: 1.0
+    },
+    4: {
+      level: 4,
+      name: 'Nhạy cao',
+      badge: 'Cảnh giác (1.25x)',
+      description: 'Phát hiện sớm chỉ sau chớp mắt dài hoặc cúi nhẹ đầu. Báo động nhanh.',
+      recommendedFor: 'Lái xe ban đêm, cao tốc, đường dài liên tỉnh',
+      minEyeCloseMs: 380,
+      minHeadDropMs: 280,
+      pitchThreshold: -8,
+      faceLostMs: 650,
+      yawnDurationMs: 850,
+      scoreMultiplier: 1.25
+    },
+    5: {
+      level: 5,
+      name: 'Cực nhạy',
+      badge: 'Tối đa (1.5x)',
+      description: 'Phản ứng tức thì với bất kỳ dấu hiệu lim dim, gục đầu hoặc rời mắt.',
+      recommendedFor: 'Khi tài xế đã bắt đầu cảm thấy buồn ngủ, chống ngủ gật khẩn cấp',
+      minEyeCloseMs: 280,
+      minHeadDropMs: 200,
+      pitchThreshold: -6,
+      faceLostMs: 500,
+      yawnDurationMs: 700,
+      scoreMultiplier: 1.5
+    }
+  } as Record<number, import('../types').SensitivityConfig>,
   
   // Landmark Indices for EAR / MAR Calculation
   FACEMESH_LEFT_EYE: [
@@ -60,13 +133,33 @@ export const CONFIG = {
   // Full continuous contour loops for drawing overlays on Canvas
   FACEMESH_LEFT_EYE_CONTOUR: [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],
   FACEMESH_RIGHT_EYE_CONTOUR: [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398],
+  FACEMESH_LEFT_EYEBROW: [70, 63, 105, 66, 107, 55, 65, 52, 53, 46],
+  FACEMESH_RIGHT_EYEBROW: [300, 293, 334, 296, 336, 285, 295, 282, 283, 276],
   FACEMESH_MOUTH_OUTER: [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146],
   FACEMESH_MOUTH_INNER: [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95],
   FACEMESH_FACE_OVAL: [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109],
-  FACEMESH_NOSE_BRIDGE: [168, 6, 197, 195, 5, 4],
+  FACEMESH_NOSE_BRIDGE: [168, 6, 197, 195, 5, 4, 1],
+  FACEMESH_NOSE_TIP_CONTOUR: [98, 97, 2, 326, 327],
   
-  // Key points for pose and drawing anchor dots
-  FACEMESH_KEY_FACE: [1, 152, 33, 263, 61, 291, 10, 152],
+  // Wireframe Triangulation Connectors for High-Tech Cyber Biometric Mesh
+  FACEMESH_CYBER_EDGES: [
+    // Forehead to Eyebrows
+    [10, 67], [10, 297], [10, 168], [67, 109], [297, 338],
+    [109, 10], [338, 10], [109, 67], [338, 297],
+    // Eyebrow to Nose bridge
+    [107, 168], [336, 168], [66, 107], [296, 336],
+    // Eye outer to Temple / Cheek
+    [33, 127], [263, 356], [130, 234], [359, 454],
+    // Cheeks to Nose
+    [116, 4], [345, 4], [123, 1], [352, 1], [213, 2], [433, 2],
+    // Mouth corners to Jaw & Chin
+    [61, 172], [291, 397], [61, 58], [291, 288], [17, 152], [0, 1],
+    // Jaw connectors
+    [152, 377], [152, 148], [148, 176], [377, 400]
+  ],
+  
+  // Key points for pose and drawing glowing anchor nodes
+  FACEMESH_KEY_FACE: [1, 10, 152, 33, 263, 61, 291, 168, 4, 234, 454],
   
   // MediaPipe FaceLandmarker Model CDN Asset
   MEDIAPIPE_WASMS: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm',

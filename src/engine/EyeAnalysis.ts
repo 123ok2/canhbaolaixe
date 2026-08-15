@@ -1,5 +1,5 @@
 /**
- * Eye Analysis Engine - Calculates Eye Aspect Ratio (EAR) & Eye Closure Tracking
+ * Eye Analysis Engine - Calculates Eye Aspect Ratio (EAR) & Accurate Eye Closure/Blink Tracking
  */
 
 import { CONFIG } from '../config/constants';
@@ -37,6 +37,10 @@ export class EyeAnalyzer {
   private totalBlinks: number = 0;
   private wasClosed: boolean = false;
   private longClosureEvents: number = 0;
+  private closureRecordedForThisEpisode: boolean = false;
+
+  // Smoothing / Debounce for brief frame dropout
+  private eyeOpenSinceMs: number = 0;
 
   public analyze(
     landmarks: Point3D[] | null,
@@ -61,38 +65,55 @@ export class EyeAnalyzer {
     const rightEar = calculateEAR(landmarks, CONFIG.FACEMESH_RIGHT_EYE);
     const averageEar = (leftEar + rightEar) / 2.0;
 
+    // Use calibrated threshold or standard tuned threshold
     const threshold = calibration.isCalibrated
       ? calibration.closedEarThreshold
       : CONFIG.DEFAULT_EAR_CLOSED_THRESHOLD;
 
-    const isClosed = averageEar < threshold;
+    // Raw closure check: EAR below threshold, or both eyes significantly drooping
+    const isCurrentlyClosed = averageEar < threshold || (leftEar < threshold * 1.08 && rightEar < threshold * 1.08);
+
     let isLongClosureEvent = false;
 
-    if (isClosed) {
+    if (isCurrentlyClosed) {
+      this.eyeOpenSinceMs = 0;
       if (!this.wasClosed) {
         this.lastClosureTimeMs = nowMs;
         this.wasClosed = true;
+        this.closureRecordedForThisEpisode = false;
       }
       this.currentClosureDurationMs = nowMs - this.lastClosureTimeMs;
 
-      // Check if this closure just crossed the long closure threshold
-      if (
-        this.currentClosureDurationMs >= CONFIG.MIN_EYE_CLOSE_ALERT_MS &&
-        this.currentClosureDurationMs - 100 < CONFIG.MIN_EYE_CLOSE_ALERT_MS
-      ) {
-        this.longClosureEvents++;
-        isLongClosureEvent = true;
+      // Check if closure duration qualifies as a drowsy long eye closure (>= 480ms)
+      if (this.currentClosureDurationMs >= CONFIG.MIN_EYE_CLOSE_ALERT_MS) {
+        if (!this.closureRecordedForThisEpisode) {
+          this.longClosureEvents++;
+          this.closureRecordedForThisEpisode = true;
+          isLongClosureEvent = true;
+        }
       }
     } else {
+      // Small 120ms debounce before finalizing eye open to avoid flicker splitting blinks
       if (this.wasClosed) {
-        // Blink completed
-        const duration = nowMs - this.lastClosureTimeMs;
-        if (duration > 80 && duration < 500) {
-          this.totalBlinks++;
+        if (this.eyeOpenSinceMs === 0) {
+          this.eyeOpenSinceMs = nowMs;
         }
-        this.wasClosed = false;
+
+        if (nowMs - this.eyeOpenSinceMs >= 120) {
+          const totalDuration = this.eyeOpenSinceMs - this.lastClosureTimeMs;
+          // Normal blink (80ms to 450ms)
+          if (totalDuration >= 80 && totalDuration < CONFIG.MIN_EYE_CLOSE_ALERT_MS) {
+            this.totalBlinks++;
+          }
+          this.wasClosed = false;
+          this.currentClosureDurationMs = 0;
+          this.closureRecordedForThisEpisode = false;
+          this.eyeOpenSinceMs = 0;
+        }
+      } else {
+        this.currentClosureDurationMs = 0;
+        this.eyeOpenSinceMs = 0;
       }
-      this.currentClosureDurationMs = 0;
     }
 
     return {
@@ -100,7 +121,7 @@ export class EyeAnalyzer {
         leftEar,
         rightEar,
         averageEar,
-        isClosed,
+        isClosed: isCurrentlyClosed,
         closureDurationMs: this.currentClosureDurationMs,
         blinkCount: this.totalBlinks
       },
@@ -112,11 +133,17 @@ export class EyeAnalyzer {
     return this.longClosureEvents;
   }
 
+  public getTotalBlinks(): number {
+    return this.totalBlinks;
+  }
+
   public reset(): void {
     this.lastClosureTimeMs = 0;
     this.currentClosureDurationMs = 0;
     this.totalBlinks = 0;
     this.wasClosed = false;
     this.longClosureEvents = 0;
+    this.closureRecordedForThisEpisode = false;
+    this.eyeOpenSinceMs = 0;
   }
 }

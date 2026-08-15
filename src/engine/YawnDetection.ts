@@ -1,5 +1,5 @@
 /**
- * Yawn Detection Engine - Calculates Mouth Aspect Ratio (MAR) & Yawn duration
+ * Yawn Detection Engine - Calculates Mouth Aspect Ratio (MAR) & Robust Yawn Tracking
  */
 
 import { CONFIG } from '../config/constants';
@@ -32,6 +32,9 @@ export class YawnAnalyzer {
   private isCurrentlyYawning: boolean = false;
   private yawnRecordedForThisSession: boolean = false;
 
+  // Grace period tracking for momentary lips vibration / frame drop during a single yawn
+  private mouthClosedSinceMs: number = 0;
+
   public analyze(
     landmarks: Point3D[] | null,
     nowMs: number,
@@ -50,19 +53,23 @@ export class YawnAnalyzer {
     }
 
     const mar = calculateMAR(landmarks);
+
+    // Adaptive threshold: calibrated threshold or standard tuned 0.48
     const threshold = calibration.isCalibrated
       ? calibration.openMarThreshold
       : CONFIG.DEFAULT_MAR_YAWN_THRESHOLD;
 
-    const isMouthOpen = mar > threshold;
+    const isMouthOpen = mar >= threshold;
     let isNewYawnDetected = false;
 
     if (isMouthOpen) {
+      this.mouthClosedSinceMs = 0;
       if (this.lastMouthOpenTimeMs === 0) {
         this.lastMouthOpenTimeMs = nowMs;
       }
       this.currentYawnDurationMs = nowMs - this.lastMouthOpenTimeMs;
 
+      // When mouth has been open >= 1000ms (1.0 second), count as a full genuine yawn
       if (this.currentYawnDurationMs >= CONFIG.MIN_YAWN_DURATION_MS) {
         this.isCurrentlyYawning = true;
         if (!this.yawnRecordedForThisSession) {
@@ -72,10 +79,25 @@ export class YawnAnalyzer {
         }
       }
     } else {
-      this.lastMouthOpenTimeMs = 0;
-      this.currentYawnDurationMs = 0;
-      this.isCurrentlyYawning = false;
-      this.yawnRecordedForThisSession = false;
+      // Allow a 250ms dropout grace window so minor mouth movement doesn't cancel an ongoing yawn
+      if (this.lastMouthOpenTimeMs > 0) {
+        if (this.mouthClosedSinceMs === 0) {
+          this.mouthClosedSinceMs = nowMs;
+        }
+
+        // If mouth has remained closed for > 250ms, conclude the yawn episode
+        if (nowMs - this.mouthClosedSinceMs > 250) {
+          this.lastMouthOpenTimeMs = 0;
+          this.currentYawnDurationMs = 0;
+          this.isCurrentlyYawning = false;
+          this.yawnRecordedForThisSession = false;
+          this.mouthClosedSinceMs = 0;
+        }
+      } else {
+        this.mouthClosedSinceMs = 0;
+        this.currentYawnDurationMs = 0;
+        this.isCurrentlyYawning = false;
+      }
     }
 
     return {
@@ -99,5 +121,6 @@ export class YawnAnalyzer {
     this.totalYawns = 0;
     this.isCurrentlyYawning = false;
     this.yawnRecordedForThisSession = false;
+    this.mouthClosedSinceMs = 0;
   }
 }

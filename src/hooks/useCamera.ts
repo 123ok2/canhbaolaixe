@@ -13,6 +13,7 @@ export interface CameraState {
 export function useCamera() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraState, setCameraState] = useState<CameraState>({
     hasPermission: null,
     isStreaming: false,
@@ -38,11 +39,12 @@ export function useCamera() {
         audio: false
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
+      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = mediaStream;
+      setStream(mediaStream);
 
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+        videoRef.current.srcObject = mediaStream;
         videoRef.current.onloadedmetadata = () => {
           videoRef.current?.play().catch(console.error);
           setCameraState({
@@ -73,6 +75,7 @@ export function useCamera() {
         msg = err.message;
       }
 
+      setStream(null);
       setCameraState({
         hasPermission: false,
         isStreaming: false,
@@ -89,6 +92,7 @@ export function useCamera() {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    setStream(null);
     setCameraState((prev) => ({ ...prev, isStreaming: false }));
   }, []);
 
@@ -100,6 +104,7 @@ export function useCamera() {
 
   return {
     videoRef,
+    stream,
     cameraState,
     startCamera,
     stopCamera

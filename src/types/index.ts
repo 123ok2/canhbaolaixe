@@ -49,6 +49,16 @@ export interface CalibrationData {
   samplesCount: number;
 }
 
+export type PrimaryAlertReason = 
+  | 'EYES_CLOSED'
+  | 'DROWSY_DROOP'
+  | 'HEAD_DROP'
+  | 'HEAD_TILT_SLEEP'
+  | 'HEAD_TURNED'
+  | 'FACE_LOST'
+  | 'YAWN'
+  | null;
+
 export interface DrowsinessMetrics {
   score: number; // 0 - 100
   state: DrowsinessState;
@@ -57,6 +67,27 @@ export interface DrowsinessMetrics {
   headPose: HeadPoseMetrics;
   calibration: CalibrationData;
   isEnhancedMonitoring: boolean; // Activated after user clicks "TÔI ĐÃ TỈNH"
+  faceDetected: boolean;
+  faceLostDurationMs: number;
+  primaryAlertReason: PrimaryAlertReason;
+  wideEyesDurationMs: number;
+  isWideEyesActive: boolean;
+}
+
+export type SensitivityLevel = 1 | 2 | 3 | 4 | 5;
+
+export interface SensitivityConfig {
+  level: SensitivityLevel;
+  name: string;
+  badge: string;
+  description: string;
+  recommendedFor: string;
+  minEyeCloseMs: number;
+  minHeadDropMs: number;
+  pitchThreshold: number;
+  faceLostMs: number;
+  yawnDurationMs: number;
+  scoreMultiplier: number;
 }
 
 export interface SessionStats {

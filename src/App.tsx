@@ -22,6 +22,7 @@ import {
   DemoModeState,
   DrowsinessMetrics,
   DrowsinessState,
+  SensitivityLevel,
   SessionStats,
 } from './types';
 
@@ -29,13 +30,14 @@ import {
 const engine = new DrowsinessEngine();
 
 export default function App() {
-  const { videoRef, cameraState, startCamera } = useCamera();
+  const { videoRef, stream, cameraState, startCamera } = useCamera();
   const {
     initAudioContext,
     playLevel1Alert,
     playLevel2Alert,
     playLevel3Alert,
     stopActiveAlert,
+    speakVoiceAlert,
     isMuted,
     toggleMute
   } = useAudioAlerts();
@@ -46,9 +48,12 @@ export default function App() {
     state: DrowsinessState.ALERT,
     eyeMetrics: { leftEar: 0.3, rightEar: 0.3, averageEar: 0.3, isClosed: false, closureDurationMs: 0, blinkCount: 0 },
     yawnMetrics: { mar: 0.2, isYawning: false, yawnDurationMs: 0, yawnCount: 0 },
-    headPose: { pitch: 0, yaw: 0, roll: 0, isHeadDropped: false, headDropDurationMs: 0, headDropCount: 0 },
-    calibration: { isCalibrated: false, baselineEar: 0.3, closedEarThreshold: 0.2, baselineMar: 0.2, openMarThreshold: 0.55, samplesCount: 0 },
-    isEnhancedMonitoring: false
+    headPose: { pitch: 0, yaw: 0, roll: 0, isHeadDropped: false, headDropDurationMs: 0, headDropCount: 0, poseType: 'NORMAL', isHeadForward: false, isTiltLeft: false, isTiltRight: false, isTurnedAway: false },
+    calibration: { isCalibrated: false, isCalibrating: false, baselineEar: 0.3, closedEarThreshold: 0.2, baselineMar: 0.2, openMarThreshold: 0.55, samplesCount: 0 },
+    isEnhancedMonitoring: false,
+    faceDetected: true,
+    faceLostDurationMs: 0,
+    primaryAlertReason: null
   });
 
   const [landmarks, setLandmarks] = useState<any[] | null>(null);
@@ -57,6 +62,63 @@ export default function App() {
   // Modals & Panels state
   const [isDemoOpen, setIsDemoOpen] = useState<boolean>(false);
   const [isFaceLandmarkerLoading, setIsFaceLandmarkerLoading] = useState<boolean>(true);
+
+  // Sensitivity Setting State (1 to 5, default 3)
+  const [sensitivity, setSensitivity] = useState<SensitivityLevel>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('driveguard_sensitivity');
+        if (saved) {
+          const num = parseInt(saved, 10);
+          if (num >= 1 && num <= 5) return num as SensitivityLevel;
+        }
+      } catch {
+        // LocalStorage fallback
+      }
+    }
+    return 3;
+  });
+
+  // Apply sensitivity to engine on mount & change
+  useEffect(() => {
+    engine.setSensitivity(sensitivity);
+  }, [sensitivity]);
+
+  const handleSensitivityChange = useCallback((level: SensitivityLevel) => {
+    setSensitivity(level);
+    engine.setSensitivity(level);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('driveguard_sensitivity', String(level));
+      } catch {
+        // LocalStorage fallback
+      }
+    }
+  }, []);
+
+  const handleSensitivityFeedback = useCallback((level: SensitivityLevel) => {
+    initAudioContext();
+    // Play a gentle pitch corresponding to level (Level 1: 440Hz -> Level 5: 880Hz)
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const freqMap: Record<SensitivityLevel, number> = { 1: 440, 2: 523.25, 3: 659.25, 4: 783.99, 5: 987.77 };
+        osc.frequency.setValueAtTime(freqMap[level] || 659.25, ctx.currentTime);
+        gain.gain.setValueAtTime(0.01, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.12);
+      }
+    } catch {
+      // Audio feedback catch
+    }
+  }, [initAudioContext]);
 
   // Initialize MediaPipe FaceLandmarker
   useEffect(() => {
@@ -100,7 +162,7 @@ export default function App() {
           currentLandmarks = faceLandmarkService.detectForVideo(video, now);
         }
 
-        if (currentLandmarks || demoMode !== 'OFF') {
+        if (isStreaming || demoMode !== 'OFF') {
           setLandmarks(currentLandmarks);
 
           const result = engine.processFrame(currentLandmarks, now);
@@ -110,18 +172,18 @@ export default function App() {
           const newStats = engine.getSessionManager().getStats();
           setSessionStats(newStats);
 
-          // Alert triggers on state change or level 3 danger repeat
+          // Immediate Alert triggers on state change or danger
           if (result.stateChanged) {
             initAudioContext();
 
             if (result.metrics.state === DrowsinessState.TIRED) {
-              playLevel1Alert();
+              playLevel1Alert(result.metrics.primaryAlertReason);
               engine.getSessionManager().recordAlertLevel(1);
             } else if (result.metrics.state === DrowsinessState.WARNING) {
-              playLevel2Alert();
+              playLevel2Alert(result.metrics.primaryAlertReason);
               engine.getSessionManager().recordAlertLevel(2);
             } else if (result.metrics.state === DrowsinessState.DANGER) {
-              playLevel3Alert();
+              playLevel3Alert(result.metrics.primaryAlertReason);
               engine.getSessionManager().recordAlertLevel(3);
             } else if (result.metrics.state === DrowsinessState.ALERT) {
               stopActiveAlert();
@@ -146,6 +208,12 @@ export default function App() {
     engine.setEnhancedMonitoring(5); // 5 minutes enhanced monitoring
   }, [stopActiveAlert]);
 
+  // Instant 'X' / Backdrop / Key Dismissal (Không làm phiền lái xe)
+  const handleDismissInstant = useCallback(() => {
+    stopActiveAlert();
+    engine.dismissAlertImmediate();
+  }, [stopActiveAlert]);
+
   // Demo Mode Handler
   const handleSelectDemoMode = useCallback((mode: DemoModeState) => {
     engine.setDemoMode(mode);
@@ -162,16 +230,17 @@ export default function App() {
         onOpenDemo={() => setIsDemoOpen(true)}
         onRecalibrate={() => engine.openCalibration()}
         isEnhancedMonitoring={metrics.isEnhancedMonitoring}
+        sensitivityLevel={sensitivity}
       />
 
       {/* Privacy & Safety Disclaimer Banner */}
       <PrivacyHeader />
 
       {/* Main Content Dashboard */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
         {/* Upper Grid: Camera Feed + Drowsiness Gauge */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          {/* Camera Feed View (Takes 2 Columns on Large Screens) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 items-start">
+          {/* Camera Feed View (Takes 2 Columns on Large Screens) with Integrated Sensitivity Controls */}
           <div className="lg:col-span-2 space-y-2">
             <CameraFeed
               videoRef={videoRef}
@@ -183,6 +252,11 @@ export default function App() {
               eyeMetrics={metrics.eyeMetrics}
               yawnMetrics={metrics.yawnMetrics}
               headPose={metrics.headPose}
+              faceDetected={metrics.faceDetected}
+              primaryAlertReason={metrics.primaryAlertReason}
+              sensitivityLevel={sensitivity}
+              onChangeSensitivity={handleSensitivityChange}
+              onPlayFeedback={handleSensitivityFeedback}
             />
           </div>
 
@@ -220,17 +294,24 @@ export default function App() {
         <CalibrationModal
           isStreaming={cameraState.isStreaming}
           hasLandmarks={landmarks !== null && landmarks.length > 0}
+          landmarks={landmarks}
           calibration={metrics.calibration}
+          stream={stream}
+          videoRef={videoRef}
           onBeginCalibration={() => engine.beginCalibrationSampling()}
           onSkip={() => engine.skipCalibration()}
         />
       )}
 
-      {/* Drowsiness Alert Modal (Level 1, Level 2, Level 3) with "TÔI ĐÃ TỈNH" */}
+      {/* Drowsiness Alert Modal (Level 1, Level 2, Level 3) with "TÔI ĐÃ TỈNH" and 'X' Button */}
       <AlertModal
         state={metrics.state}
         score={metrics.score}
+        primaryAlertReason={metrics.primaryAlertReason}
+        wideEyesDurationMs={metrics.wideEyesDurationMs}
+        isWideEyesActive={metrics.isWideEyesActive}
         onConfirmAwake={handleConfirmAwake}
+        onDismissInstant={handleDismissInstant}
         isMuted={isMuted}
       />
 
@@ -240,19 +321,23 @@ export default function App() {
           currentDemoMode={engine.getDemoMode()}
           onSelectDemoMode={handleSelectDemoMode}
           onClose={() => setIsDemoOpen(false)}
+          onTestVoice={(text) => {
+            initAudioContext();
+            speakVoiceAlert(text, 0);
+          }}
         />
       )}
 
       {/* Compact & Clean Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950/90 py-3.5 px-4 text-xs text-slate-400">
+      <footer className="border-t border-slate-900 bg-slate-950/95 py-3 px-4 safe-pb text-xs text-slate-400">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
-          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-[12px] text-slate-300">
-            <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 sm:gap-2 text-[11px] sm:text-[12px] text-slate-300">
+            <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-cyan-400 shrink-0"></span>
             <span>Bản quyền thuộc về <strong className="text-amber-300 font-bold">PTDTBT THCS Thu Cúc</strong></span>
             <span className="text-slate-600 hidden sm:inline">•</span>
             <span className="text-amber-400 font-medium">Sáng tạo Trẻ toàn quốc (Lĩnh vực AI)</span>
           </div>
-          <p className="text-[11px] text-slate-500 font-mono">
+          <p className="text-[10px] sm:text-[11px] text-slate-500 font-mono">
             DriveGuard AI &copy; 2026
           </p>
         </div>

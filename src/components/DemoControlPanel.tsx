@@ -2,7 +2,7 @@
  * Demo Simulation Control Panel Modal
  */
 
-import { Activity, AlertTriangle, Eye, EyeOff, Moon, Smile, X } from 'lucide-react';
+import { Activity, AlertTriangle, Eye, EyeOff, Moon, Smile, Volume2, X } from 'lucide-react';
 import React from 'react';
 import { DemoModeState } from '../types';
 
@@ -10,12 +10,14 @@ interface DemoControlPanelProps {
   currentDemoMode: DemoModeState;
   onSelectDemoMode: (mode: DemoModeState) => void;
   onClose: () => void;
+  onTestVoice?: (text: string) => void;
 }
 
 export const DemoControlPanel: React.FC<DemoControlPanelProps> = ({
   currentDemoMode,
   onSelectDemoMode,
-  onClose
+  onClose,
+  onTestVoice
 }) => {
   const modes: { id: DemoModeState; label: string; desc: string; icon: React.ReactNode; color: string }[] = [
     {
@@ -122,6 +124,46 @@ export const DemoControlPanel: React.FC<DemoControlPanelProps> = ({
             );
           })}
         </div>
+
+        {/* Voice Announcement Quick Test Section */}
+        {onTestVoice && (
+          <div className="p-3 rounded-xl bg-slate-950/90 border border-cyan-800/60 space-y-2">
+            <div className="flex items-center gap-1.5 text-cyan-300 text-xs font-bold">
+              <Volume2 className="w-3.5 h-3.5" />
+              <span>Thử giọng đọc cảnh báo Tiếng Việt:</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => onTestVoice('Cảnh báo! Phát hiện dấu hiệu buồn ngủ, vui lòng tập trung!')}
+                className="px-2 py-1.5 rounded-lg bg-amber-950/70 border border-amber-600/70 text-amber-300 text-[11px] font-semibold hover:bg-amber-900 transition-colors flex items-center justify-center gap-1"
+              >
+                🔊 Cảnh báo buồn ngủ
+              </button>
+              <button
+                type="button"
+                onClick={() => onTestVoice('Cảnh báo! Phát hiện gục đầu, hãy ngẩng cao đầu lên ngay!')}
+                className="px-2 py-1.5 rounded-lg bg-red-950/70 border border-red-600/70 text-red-300 text-[11px] font-semibold hover:bg-red-900 transition-colors flex items-center justify-center gap-1"
+              >
+                🔊 Cảnh báo gục đầu
+              </button>
+              <button
+                type="button"
+                onClick={() => onTestVoice('Cảnh báo! Bạn đang nhắm mắt kéo dài, hãy mở mắt ra!')}
+                className="px-2 py-1.5 rounded-lg bg-red-950/70 border border-red-600/70 text-red-300 text-[11px] font-semibold hover:bg-red-900 transition-colors flex items-center justify-center gap-1"
+              >
+                🔊 Cảnh báo nhắm mắt
+              </button>
+              <button
+                type="button"
+                onClick={() => onTestVoice('Nguy hiểm cực độ! Dừng xe và nghỉ ngơi ngay lập tức!')}
+                className="px-2 py-1.5 rounded-lg bg-purple-950/70 border border-purple-600/70 text-purple-300 text-[11px] font-semibold hover:bg-purple-900 transition-colors flex items-center justify-center gap-1"
+              >
+                🔊 Nguy hiểm cực độ
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="pt-2">
           <button
