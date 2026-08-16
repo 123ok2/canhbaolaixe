@@ -81,6 +81,15 @@ export type PrimaryAlertReason =
   | 'YAWN'
   | null;
 
+export interface EnvironmentDiagnostics {
+  lightingState: 'GOOD' | 'LOW_LIGHT' | 'OVEREXPOSED';
+  lightingLevel: number; // 0 - 255
+  angleStatus: 'OPTIMAL' | 'TILTED_HIGH' | 'TILTED_LOW' | 'TILTED_SIDE';
+  angleMessage: string | null;
+  lightingMessage: string | null;
+  fps: number;
+}
+
 export interface DrowsinessMetrics {
   score: number; // 0 - 100
   state: DrowsinessState;
@@ -95,6 +104,7 @@ export interface DrowsinessMetrics {
   primaryAlertReason: PrimaryAlertReason;
   wideEyesDurationMs: number;
   isWideEyesActive: boolean;
+  environment?: EnvironmentDiagnostics;
 }
 
 export type SensitivityLevel = 1 | 2 | 3 | 4 | 5;

@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { audioSynthesizer } from '../engine/AudioSynthesizer';
 import { EMBEDDED_SOUNDS } from '../data/soundBase64';
-import { PrimaryAlertReason } from '../types';
+import { PrimaryAlertReason, SensitivityLevel } from '../types';
 
 export function useAudioAlerts() {
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -279,22 +279,29 @@ export function useAudioAlerts() {
     );
   }, [unlockAudio, isMuted, stopActiveAlert, playCustomAudioFile]);
 
-  // Short click beep for sensitivity level changes (Mức 1 đến 5)
-  const playBeepLevel = useCallback(() => {
+  // Distinct tone & haptic feedback for sensitivity level changes (Mức 1 đến 5)
+  const playBeepLevel = useCallback((level: SensitivityLevel = 3) => {
     if (isMuted || typeof window === 'undefined') return;
     unlockAudio();
-    try {
-      const audio = soundCacheRef.current.get('beep_level.mp3') || new Audio(getSoundUrl('beep_level.mp3'));
-      audio.volume = 0.9;
-      audio.currentTime = 0;
-      audio.play().catch(() => {
-        // Fallback Web Audio beep
-        audioSynthesizer.playAttentionChime();
-      });
-    } catch {
-      audioSynthesizer.playAttentionChime();
+
+    // Haptic vibration feedback corresponding to sensitivity level
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        switch (level) {
+          case 1: navigator.vibrate(35); break;
+          case 2: navigator.vibrate([35, 30, 35]); break;
+          case 3: navigator.vibrate([45, 30, 45, 30, 45]); break;
+          case 4: navigator.vibrate([60, 25, 60, 25, 60, 25, 60]); break;
+          case 5: navigator.vibrate([90, 35, 90, 35, 120]); break;
+        }
+      } catch {
+        // Safe vibration catch
+      }
     }
-  }, [unlockAudio, isMuted, getSoundUrl]);
+
+    // Play synthesized acoustic frequency matching the level
+    audioSynthesizer.playLevelFeedback(level);
+  }, [unlockAudio, isMuted]);
 
   // Cảnh báo sớm: Mất tập trung -> alert_mat_tap_trung.mp3
   const playEarlyDistractionAlert = useCallback(() => {

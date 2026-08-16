@@ -48,6 +48,102 @@ class WebAudioSynthesizer {
   }
 
   /**
+   * Play distinct acoustic feedback when switching between sensitivity levels (1 to 5)
+   */
+  public playLevelFeedback(level: number): void {
+    const ctx = this.getAudioContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+      const lvl = Math.max(1, Math.min(5, level));
+
+      switch (lvl) {
+        case 1: {
+          // Level 1: 1 soft gentle pulse (523Hz C5)
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(523, now);
+          gain.gain.setValueAtTime(0.2, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.2);
+          break;
+        }
+        case 2: {
+          // Level 2: 2 calm pulses (659Hz E5)
+          [0, 0.10].forEach((offset) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(659, now + offset);
+            gain.gain.setValueAtTime(0.25, now + offset);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.09);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now + offset);
+            osc.stop(now + offset + 0.1);
+          });
+          break;
+        }
+        case 3: {
+          // Level 3: 3 crisp bright pulses (880Hz A5)
+          [0, 0.08, 0.16].forEach((offset) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, now + offset);
+            gain.gain.setValueAtTime(0.3, now + offset);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.08);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now + offset);
+            osc.stop(now + offset + 0.09);
+          });
+          break;
+        }
+        case 4: {
+          // Level 4: 4 rapid high pulses (1174Hz D6)
+          [0, 0.06, 0.12, 0.18].forEach((offset) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(1174, now + offset);
+            gain.gain.setValueAtTime(0.35, now + offset);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.06);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now + offset);
+            osc.stop(now + offset + 0.07);
+          });
+          break;
+        }
+        case 5: {
+          // Level 5: High-intensity dual sharp emergency chime (1480Hz -> 1760Hz)
+          [0, 0.12].forEach((offset, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(idx === 0 ? 1480 : 1760, now + offset);
+            gain.gain.setValueAtTime(0.35, now + offset);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.11);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now + offset);
+            osc.stop(now + offset + 0.12);
+          });
+          break;
+        }
+      }
+    } catch (e) {
+      console.warn('Level feedback audio error:', e);
+    }
+  }
+
+  /**
    * Play a crisp, high-pitch Attention Chime (Tier 2 fallback for level 1 / distraction)
    */
   public playAttentionChime(): void {

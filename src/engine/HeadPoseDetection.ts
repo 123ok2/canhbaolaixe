@@ -4,6 +4,7 @@
 
 import { CONFIG } from '../config/constants';
 import { DistractionLevel, DistractionMetrics, DistractionType, HeadPoseMetrics } from '../types';
+import { ExponentialMovingAverage } from './SignalFilters';
 
 interface Point3D {
   x: number;
@@ -27,6 +28,11 @@ export class HeadPoseAnalyzer {
 
   // Debounce for momentary head posture flicker
   private headRecoveredSinceMs: number = 0;
+
+  // EMA signal smoothing for Head Pose to prevent camera sensor jitter
+  private pitchEma = new ExponentialMovingAverage(CONFIG.FILTER.EMA_ALPHA_POSE);
+  private yawEma = new ExponentialMovingAverage(CONFIG.FILTER.EMA_ALPHA_POSE);
+  private rollEma = new ExponentialMovingAverage(CONFIG.FILTER.EMA_ALPHA_POSE);
 
   public analyze(
     landmarks: Point3D[] | null,
@@ -97,13 +103,13 @@ export class HeadPoseAnalyzer {
     // 1. Roll estimation (head side tilt)
     const dy = rightEye.y - leftEye.y;
     const dx = rightEye.x - leftEye.x;
-    const rollAngle = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const rawRoll = (Math.atan2(dy, dx) * 180) / Math.PI;
 
     // 2. Yaw estimation (head left/right rotation)
     const distToLeftEye = Math.hypot(nose.x - leftEye.x, nose.y - leftEye.y);
     const distToRightEye = Math.hypot(nose.x - rightEye.x, nose.y - rightEye.y);
     const yawRatio = (distToLeftEye - distToRightEye) / (distToLeftEye + distToRightEye || 0.001);
-    const yawAngle = yawRatio * 55;
+    const rawYaw = yawRatio * 55;
 
     // 3. Pitch estimation (head nodding down/up) using 3D face geometric proportions
     const eyeCenterY = (leftEye.y + rightEye.y) / 2;
@@ -126,7 +132,12 @@ export class HeadPoseAnalyzer {
     const pitchFromZ = (zDiff < 0) ? zDiff * 140 : zDiff * 55;
 
     const rawPitch = pitchFromRatio * 0.40 + pitchFromLower * 0.30 + pitchFromHeight * 0.15 + pitchFromZ * 0.15;
-    const pitchAngle = Math.max(-60, Math.min(60, rawPitch));
+    const clampedPitch = Math.max(-60, Math.min(60, rawPitch));
+
+    // Smooth angles with EMA
+    const pitchAngle = this.pitchEma.update(clampedPitch);
+    const yawAngle = this.yawEma.update(rawYaw);
+    const rollAngle = this.rollEma.update(rawRoll);
 
     // Check specific directional postures
     const isHeadForward = pitchAngle < CONFIG.HEAD_DROP_PITCH_THRESHOLD;

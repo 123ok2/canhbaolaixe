@@ -5,11 +5,12 @@
  */
 
 import { CONFIG } from '../config/constants';
-import { CalibrationData, DemoModeState, DrowsinessMetrics, DrowsinessState } from '../types';
+import { CalibrationData, DemoModeState, DrowsinessMetrics, DrowsinessState, EnvironmentDiagnostics } from '../types';
 
 import { calculateEAR, EyeAnalyzer } from './EyeAnalysis';
 import { HeadPoseAnalyzer } from './HeadPoseDetection';
 import { SessionManager } from './SessionManager';
+import { EnvironmentAnalyzer } from './SignalFilters';
 import { calculateMAR, YawnAnalyzer } from './YawnDetection';
 
 interface Point3D {
@@ -23,6 +24,7 @@ export class DrowsinessEngine {
   private yawnAnalyzer = new YawnAnalyzer();
   private headPoseAnalyzer = new HeadPoseAnalyzer();
   private sessionManager = new SessionManager();
+  private environmentAnalyzer = new EnvironmentAnalyzer();
 
   private calibration: CalibrationData = {
     isCalibrated: false,
@@ -251,26 +253,27 @@ export class DrowsinessEngine {
       primaryAlertReason = null;
     }
 
-    // Fast-path escalation: If immediate high risk, force rolling window to reflect it instantly
+    // Fast-path escalation: If immediate high risk, force rolling window and state to reflect it instantly with 0ms lag
     if (immediateHighRisk) {
-      this.scoreWindow = this.scoreWindow.map(s => Math.max(s, targetScore * 0.9));
-      this.scoreWindow.push(targetScore);
+      this.scoreWindow = [targetScore, targetScore, targetScore, targetScore, targetScore];
+      this.currentScore = targetScore;
+      if (targetScore >= CONFIG.SCORE_STATE_DANGER || this.sensitivityLevel === 5) {
+        this.currentState = DrowsinessState.DANGER;
+      } else if (targetScore >= CONFIG.SCORE_STATE_WARNING) {
+        this.currentState = DrowsinessState.WARNING;
+      }
     } else {
       this.scoreWindow.push(targetScore);
+      if (this.scoreWindow.length > CONFIG.ROLLING_WINDOW_SIZE) {
+        this.scoreWindow.shift();
+      }
+      const smoothedScore = Math.round(
+        this.scoreWindow.reduce((a, b) => a + b, 0) / (this.scoreWindow.length || 1)
+      );
+      this.currentScore = smoothedScore;
+      // State transition with hysteresis for normal recovery
+      this.updateStateWithHysteresis(this.currentScore);
     }
-
-    if (this.scoreWindow.length > CONFIG.ROLLING_WINDOW_SIZE) {
-      this.scoreWindow.shift();
-    }
-
-    const smoothedScore = Math.round(
-      this.scoreWindow.reduce((a, b) => a + b, 0) / (this.scoreWindow.length || 1)
-    );
-
-    this.currentScore = immediateHighRisk ? Math.max(smoothedScore, targetScore) : smoothedScore;
-
-    // State transition with hysteresis
-    this.updateStateWithHysteresis(this.currentScore);
 
     // Record session frame
     this.sessionManager.recordFrame(this.currentScore, this.currentState, nowMs);
@@ -281,6 +284,14 @@ export class DrowsinessEngine {
     }
 
     const stateChanged = this.currentState !== previousState;
+
+    const envDiag = this.environmentAnalyzer.analyze(
+      null,
+      headPose.pitch,
+      headPose.yaw,
+      headPose.roll,
+      faceDetected
+    );
 
     return {
       metrics: {
@@ -296,7 +307,15 @@ export class DrowsinessEngine {
         faceLostDurationMs,
         primaryAlertReason,
         wideEyesDurationMs: this.wideEyesDurationMs,
-        isWideEyesActive: isEyesWideOpen
+        isWideEyesActive: isEyesWideOpen,
+        environment: {
+          lightingState: envDiag.lightingState,
+          lightingLevel: envDiag.lightingLevel,
+          angleStatus: envDiag.angleStatus,
+          angleMessage: envDiag.angleMessage,
+          lightingMessage: envDiag.lightingMessage,
+          fps: envDiag.fps
+        }
       },
       isNewLongClosure: isLongClosureEvent,
       isNewYawn: isNewYawnDetected,

@@ -28,18 +28,29 @@ export function useCamera() {
         throw new Error('Trình duyệt của bạn không hỗ trợ truy cập camera (getUserMedia).');
       }
 
-      // Try user front camera first
+      // Optimal mobile driving setup: 1280x720 (720p) @ 30-60fps
+      // 720p provides crystal-clear iris & eye landmarks without thermal throttling
       const constraints: MediaStreamConstraints = {
         video: {
           facingMode: 'user',
-          width: { ideal: 640, max: 1280 },
-          height: { ideal: 480, max: 720 },
-          frameRate: { ideal: 30 }
+          width: { ideal: 1280, max: 1280, min: 640 },
+          height: { ideal: 720, max: 720, min: 480 },
+          frameRate: { ideal: 30, max: 60, min: 20 }
         },
         audio: false
       };
 
-      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      let mediaStream: MediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (firstTryErr) {
+        console.warn('720p constraint failed, falling back to standard user media:', firstTryErr);
+        // Fallback for older mobile devices
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: false
+        });
+      }
       streamRef.current = mediaStream;
       setStream(mediaStream);
 

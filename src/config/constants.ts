@@ -49,27 +49,27 @@ export const CONFIG = {
     1: {
       level: 1,
       name: 'Rất thấp',
-      badge: 'Thư thái (0.6x)',
+      badge: 'Thư thái (0.65x)',
       description: 'Dung sai lớn nhất, giảm tối đa báo động giả khi đi đường xóc, nói chuyện nhiều.',
       recommendedFor: 'Đường nội đô gồ ghề, lúc nói chuyện, dừng đỗ nhiều',
-      minEyeCloseMs: 850,
+      minEyeCloseMs: 800,
       minHeadDropMs: 550,
       pitchThreshold: -15,
       faceLostMs: 1400,
       yawnDurationMs: 1600,
-      scoreMultiplier: 0.7
+      scoreMultiplier: 0.65
     },
     2: {
       level: 2,
       name: 'Thấp',
-      badge: 'Êm dịu (0.8x)',
+      badge: 'Êm dịu (0.85x)',
       description: 'Giảm độ nhạy âm thanh, cảnh báo khi mắt nhắm rõ rệt hoặc gục đầu lâu.',
-      recommendedFor: 'Lái xe ban ngày đường thông thoáng',
-      minEyeCloseMs: 650,
-      minHeadDropMs: 450,
-      pitchThreshold: -13,
-      faceLostMs: 1100,
-      yawnDurationMs: 1300,
+      recommendedFor: 'Lái xe ban ngày đường thông thoáng, tài xế tỉnh táo',
+      minEyeCloseMs: 600,
+      minHeadDropMs: 420,
+      pitchThreshold: -12,
+      faceLostMs: 1000,
+      yawnDurationMs: 1200,
       scoreMultiplier: 0.85
     },
     3: {
@@ -77,39 +77,39 @@ export const CONFIG = {
       name: 'Tiêu chuẩn',
       badge: 'Khuyên dùng (1.0x)',
       description: 'Cân bằng hoàn hảo giữa độ chính xác và tốc độ phản ứng cảnh báo.',
-      recommendedFor: 'Tất cả các điều kiện lái xe thông thường',
-      minEyeCloseMs: 480,
-      minHeadDropMs: 350,
+      recommendedFor: 'Tất cả các điều kiện lái xe thông thường (Đô thị & Cao tốc)',
+      minEyeCloseMs: 450,
+      minHeadDropMs: 300,
       pitchThreshold: -10,
-      faceLostMs: 800,
-      yawnDurationMs: 1000,
+      faceLostMs: 750,
+      yawnDurationMs: 900,
       scoreMultiplier: 1.0
     },
     4: {
       level: 4,
       name: 'Nhạy cao',
-      badge: 'Cảnh giác (1.25x)',
-      description: 'Phát hiện sớm chỉ sau chớp mắt dài hoặc cúi nhẹ đầu. Báo động nhanh.',
-      recommendedFor: 'Lái xe ban đêm, cao tốc, đường dài liên tỉnh',
-      minEyeCloseMs: 380,
-      minHeadDropMs: 280,
-      pitchThreshold: -8,
-      faceLostMs: 650,
-      yawnDurationMs: 850,
-      scoreMultiplier: 1.25
+      badge: 'Cảnh giác (1.45x)',
+      description: 'Phát hiện sớm chỉ sau chớp mắt dài hoặc cúi nhẹ đầu. Báo động cực nhanh.',
+      recommendedFor: 'Lái xe ban đêm, trời mưa sương mù, cao tốc liên tỉnh đường dài',
+      minEyeCloseMs: 280,
+      minHeadDropMs: 200,
+      pitchThreshold: -7,
+      faceLostMs: 450,
+      yawnDurationMs: 700,
+      scoreMultiplier: 1.45
     },
     5: {
       level: 5,
-      name: 'Cực nhạy',
-      badge: 'Tối đa (1.5x)',
-      description: 'Phản ứng tức thì với bất kỳ dấu hiệu lim dim, gục đầu hoặc rời mắt.',
-      recommendedFor: 'Khi tài xế đã bắt đầu cảm thấy buồn ngủ, chống ngủ gật khẩn cấp',
-      minEyeCloseMs: 280,
-      minHeadDropMs: 200,
-      pitchThreshold: -6,
-      faceLostMs: 500,
-      yawnDurationMs: 700,
-      scoreMultiplier: 1.5
+      name: 'Cực nhạy (Khẩn cấp)',
+      badge: 'Tức thì (2.0x)',
+      description: 'Báo động tức thì ngay khi mắt nhắm (>0.18s), gục đầu hoặc rời mắt. Phản ứng 0 độ trễ.',
+      recommendedFor: 'Tài xế buồn ngủ nặng, chạy đêm mệt mỏi, chống ngủ gật khẩn cấp',
+      minEyeCloseMs: 180,
+      minHeadDropMs: 130,
+      pitchThreshold: -4,
+      faceLostMs: 280,
+      yawnDurationMs: 450,
+      scoreMultiplier: 2.0
     }
   } as Record<number, import('../types').SensitivityConfig>,
   
@@ -124,11 +124,24 @@ export const CONFIG = {
     { p1: 387, p2: 373 }, // vertical 2
     { p1: 362, p2: 263 }  // horizontal
   ],
+  // Iris Landmarker Indices for 478-point 3D Face Mesh
+  FACEMESH_LEFT_IRIS: [468, 469, 470, 471, 472],   // 468 is center of left iris
+  FACEMESH_RIGHT_IRIS: [473, 474, 475, 476, 477], // 473 is center of right iris
   FACEMESH_MOUTH: [
     { p1: 13, p2: 14 },   // vertical inner lip
     { p1: 0,  p2: 17 },   // vertical outer lip
     { p1: 61, p2: 291 }   // horizontal lip width (outer corners)
   ],
+
+  // 1€ Filter (One Euro Filter) & Signal Filtering Configuration
+  FILTER: {
+    ONE_EURO_MIN_CUTOFF: 1.0, // Minimum cutoff freq (Hz) for static jitter suppression
+    ONE_EURO_BETA: 0.05,      // Speed coefficient for zero-lag dynamic motion
+    ONE_EURO_D_CUTOFF: 1.0,   // Cutoff freq for derivative calculation
+    EMA_ALPHA_EAR: 0.40,      // Exponential moving average alpha for EAR
+    EMA_ALPHA_MAR: 0.35,      // Exponential moving average alpha for MAR
+    EMA_ALPHA_POSE: 0.30      // Exponential moving average alpha for Head Pose
+  },
 
   // Full continuous contour loops for drawing overlays on Canvas
   FACEMESH_LEFT_EYE_CONTOUR: [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],

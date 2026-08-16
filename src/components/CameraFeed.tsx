@@ -28,6 +28,7 @@ interface CameraFeedProps {
   distractionMetrics?: DistractionMetrics;
   faceDetected?: boolean;
   primaryAlertReason?: import('../types').PrimaryAlertReason;
+  environment?: import('../types').EnvironmentDiagnostics;
   sensitivityLevel?: SensitivityLevel;
   onChangeSensitivity?: (level: SensitivityLevel) => void;
   onPlayFeedback?: (level: SensitivityLevel) => void;
@@ -163,7 +164,7 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
     drawContour(CONFIG.FACEMESH_LEFT_EYEBROW, false, 1.6, secondaryColor);
     drawContour(CONFIG.FACEMESH_RIGHT_EYEBROW, false, 1.6, secondaryColor);
 
-    // 4. Draw Eyes with Dynamic Status Highlighting
+    // 4. Draw Eyes with Dynamic Status Highlighting & Iris Tracking
     const eyeStrokeColor = eyeMetrics.isClosed ? '#ef4444' : secondaryColor;
     const eyeGlowColor = eyeMetrics.isClosed ? 'rgba(239, 68, 68, 0.9)' : glowColor;
 
@@ -172,6 +173,69 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
     ctx.shadowBlur = 12;
     drawContour(CONFIG.FACEMESH_LEFT_EYE_CONTOUR, true, 2.0, eyeStrokeColor);
     drawContour(CONFIG.FACEMESH_RIGHT_EYE_CONTOUR, true, 2.0, eyeStrokeColor);
+
+    // 4b. Draw Iris (Nhãn cầu / Con ngươi - 478 points model) when eyes are open
+    if (!eyeMetrics.isClosed && landmarks.length >= 478) {
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = '#06b6d4';
+      drawContour(CONFIG.FACEMESH_LEFT_IRIS, true, 1.4, '#38bdf8', 'rgba(56, 189, 248, 0.35)');
+      drawContour(CONFIG.FACEMESH_RIGHT_IRIS, true, 1.4, '#38bdf8', 'rgba(56, 189, 248, 0.35)');
+
+      // Iris Centers (468 Left, 473 Right)
+      const leftIris = landmarks[468];
+      const rightIris = landmarks[473];
+      if (leftIris) {
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(leftIris.x * width, leftIris.y * height, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (rightIris) {
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(rightIris.x * width, rightIris.y * height, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    // 4c. Draw ROI Bounding Box Brackets (Crop vùng quan tâm)
+    let minX = 1, minY = 1, maxX = 0, maxY = 0;
+    for (let i = 0; i < landmarks.length; i++) {
+      const p = landmarks[i];
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+    const marginX = (maxX - minX) * 0.12;
+    const marginY = (maxY - minY) * 0.12;
+    const bx = Math.max(0, (minX - marginX) * width);
+    const by = Math.max(0, (minY - marginY) * height);
+    const bw = Math.min(width - bx, (maxX - minX + 2 * marginX) * width);
+    const bh = Math.min(height - by, (maxY - minY + 2 * marginY) * height);
+    const bracketLen = Math.min(bw, bh) * 0.18;
+
+    ctx.save();
+    ctx.strokeStyle = primaryColor;
+    ctx.lineWidth = 1.8;
+    ctx.globalAlpha = 0.55;
+    // Top-Left
+    ctx.beginPath();
+    ctx.moveTo(bx, by + bracketLen); ctx.lineTo(bx, by); ctx.lineTo(bx + bracketLen, by);
+    ctx.stroke();
+    // Top-Right
+    ctx.beginPath();
+    ctx.moveTo(bx + bw - bracketLen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + bracketLen);
+    ctx.stroke();
+    // Bottom-Left
+    ctx.beginPath();
+    ctx.moveTo(bx, by + bh - bracketLen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + bracketLen, by + bh);
+    ctx.stroke();
+    // Bottom-Right
+    ctx.beginPath();
+    ctx.moveTo(bx + bw - bracketLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - bracketLen);
+    ctx.stroke();
     ctx.restore();
 
     // 5. Draw Nose Bridge
@@ -328,7 +392,7 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
       {/* Canvas Overlay for Landmark Tracking */}
       <canvas
         ref={canvasRef}
-        className="absolute inset-0 w-full h-full pointer-events-none transform -scale-x-100 z-10"
+        className="absolute inset-0 w-full h-full object-cover pointer-events-none transform -scale-x-100 z-10"
       />
 
       {/* Loading / Offline State Overlay */}

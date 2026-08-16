@@ -335,7 +335,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
           {/* Real-time Canvas Mesh Overlay */}
           <canvas
             ref={previewCanvasRef}
-            className="absolute inset-0 w-full h-full pointer-events-none transform -scale-x-100 z-10"
+            className="absolute inset-0 w-full h-full object-cover pointer-events-none transform -scale-x-100 z-10"
           />
 
           {/* Biometric Face Alignment Oval HUD */}

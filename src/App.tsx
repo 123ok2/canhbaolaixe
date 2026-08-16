@@ -102,7 +102,7 @@ export default function App() {
 
   const handleSensitivityFeedback = useCallback((level: SensitivityLevel) => {
     initAudioContext();
-    playBeepLevel();
+    playBeepLevel(level);
   }, [initAudioContext, playBeepLevel]);
 
   // Initialize MediaPipe FaceLandmarker
@@ -124,6 +124,38 @@ export default function App() {
   useEffect(() => {
     startCamera();
   }, [startCamera]);
+
+  // Mobile Screen Wake Lock: Keep phone screen awake during driving monitoring
+  useEffect(() => {
+    let wakeLock: any = null;
+
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator && cameraState.isStreaming) {
+        try {
+          wakeLock = await (navigator as any).wakeLock.request('screen');
+        } catch (err) {
+          console.warn('Wake Lock request failed:', err);
+        }
+      }
+    };
+
+    requestWakeLock();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+      }
+    };
+  }, [cameraState.isStreaming]);
 
   // Main Realtime Frame Processing Loop
   useEffect(() => {
@@ -161,10 +193,13 @@ export default function App() {
           if (result.isNewDistraction) {
             initAudioContext();
             playEarlyDistractionAlert();
+            if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+              try { navigator.vibrate(150); } catch {}
+            }
           }
 
           // Immediate Alert triggers on state change or danger
-          if (result.stateChanged) {
+          if (result.stateChanged || (result.metrics.state === DrowsinessState.DANGER && !isPlayingEmergency)) {
             initAudioContext();
 
             if (result.metrics.state === DrowsinessState.TIRED) {
@@ -173,11 +208,20 @@ export default function App() {
             } else if (result.metrics.state === DrowsinessState.WARNING) {
               playLevel2Alert(result.metrics.primaryAlertReason);
               engine.getSessionManager().recordAlertLevel(2);
+              if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                try { navigator.vibrate([250, 100, 250]); } catch {}
+              }
             } else if (result.metrics.state === DrowsinessState.DANGER) {
               playLevel3Alert(result.metrics.primaryAlertReason);
               engine.getSessionManager().recordAlertLevel(3);
+              if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                try { navigator.vibrate([500, 150, 500, 150, 1000]); } catch {}
+              }
             } else if (result.metrics.state === DrowsinessState.ALERT) {
               stopActiveAlert();
+              if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                try { navigator.vibrate(0); } catch {}
+              }
             }
           }
         }
@@ -191,7 +235,7 @@ export default function App() {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [cameraState.isStreaming, videoRef, initAudioContext, playEarlyDistractionAlert, playLevel1Alert, playLevel2Alert, playLevel3Alert, stopActiveAlert]);
+  }, [cameraState.isStreaming, videoRef, isPlayingEmergency, initAudioContext, playEarlyDistractionAlert, playLevel1Alert, playLevel2Alert, playLevel3Alert, stopActiveAlert]);
 
   // "TÔI ĐÃ TỈNH" Click Handler
   const handleConfirmAwake = useCallback(() => {
@@ -242,6 +286,7 @@ export default function App() {
               distractionMetrics={metrics.distractionMetrics}
               faceDetected={metrics.faceDetected}
               primaryAlertReason={metrics.primaryAlertReason}
+              environment={metrics.environment}
               sensitivityLevel={sensitivity}
               onChangeSensitivity={handleSensitivityChange}
               onPlayFeedback={handleSensitivityFeedback}

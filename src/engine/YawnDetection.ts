@@ -5,6 +5,7 @@
 import { CONFIG } from '../config/constants';
 import { CalibrationData, YawnMetrics } from '../types';
 import { euclideanDistance2D } from './EyeAnalysis';
+import { ExponentialMovingAverage } from './SignalFilters';
 
 interface Point3D {
   x: number;
@@ -31,6 +32,7 @@ export class YawnAnalyzer {
   private totalYawns: number = 0;
   private isCurrentlyYawning: boolean = false;
   private yawnRecordedForThisSession: boolean = false;
+  private marEma = new ExponentialMovingAverage(CONFIG.FILTER.EMA_ALPHA_MAR);
 
   // Grace period tracking for momentary lips vibration / frame drop during a single yawn
   private mouthClosedSinceMs: number = 0;
@@ -52,7 +54,8 @@ export class YawnAnalyzer {
       };
     }
 
-    const mar = calculateMAR(landmarks);
+    const rawMar = calculateMAR(landmarks);
+    const mar = this.marEma.update(rawMar);
 
     // Adaptive threshold: calibrated threshold or standard tuned 0.48
     const threshold = calibration.isCalibrated
@@ -122,5 +125,6 @@ export class YawnAnalyzer {
     this.isCurrentlyYawning = false;
     this.yawnRecordedForThisSession = false;
     this.mouthClosedSinceMs = 0;
+    this.marEma.reset();
   }
 }
