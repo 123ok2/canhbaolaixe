@@ -20,6 +20,7 @@ import { DrowsinessState, PrimaryAlertReason } from '../types';
 interface AlertModalProps {
   state: DrowsinessState;
   score: number;
+  isCalibrated?: boolean;
   primaryAlertReason?: PrimaryAlertReason;
   wideEyesDurationMs?: number;
   isWideEyesActive?: boolean;
@@ -31,6 +32,7 @@ interface AlertModalProps {
 export const AlertModal: React.FC<AlertModalProps> = ({
   state,
   score,
+  isCalibrated = true,
   primaryAlertReason,
   wideEyesDurationMs = 0,
   isWideEyesActive = false,
@@ -47,16 +49,16 @@ export const AlertModal: React.FC<AlertModalProps> = ({
       }
     };
 
-    if (state !== DrowsinessState.ALERT) {
+    if (isCalibrated && state !== DrowsinessState.ALERT) {
       window.addEventListener('keydown', handleKeyDown);
     }
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [state, onConfirmAwake, onDismissInstant]);
+  }, [state, isCalibrated, onConfirmAwake, onDismissInstant]);
 
-  // Only show modal for TIRED, WARNING, DANGER
-  if (state === DrowsinessState.ALERT) return null;
+  // Only show modal when calibrated and in TIRED, WARNING, DANGER state
+  if (!isCalibrated || state === DrowsinessState.ALERT) return null;
 
   const handleClose = () => {
     if (onDismissInstant) {

@@ -182,12 +182,25 @@ export default function App() {
         if (isStreaming || demoMode !== 'OFF') {
           setLandmarks(currentLandmarks);
 
-          const result = engine.processFrame(currentLandmarks, now);
+          // Extract camera feed aspect ratio (width / height) to ensure isotropic geometric metric calculations across all phone & desktop devices
+          let aspectRatio = 1.0;
+          if (video && video.videoWidth && video.videoHeight && video.videoHeight > 0) {
+            aspectRatio = video.videoWidth / video.videoHeight;
+          }
+
+          const result = engine.processFrame(currentLandmarks, now, aspectRatio);
           setMetrics(result.metrics);
 
           // Update session stats
           const newStats = engine.getSessionManager().getStats();
           setSessionStats(newStats);
+
+          // QUY TẮC BẮT BUỘC: Khi chưa hiệu chỉnh xong, KHÔNG BAO GIỜ phát âm thanh cảnh báo hoặc rung
+          if (!result.metrics.calibration.isCalibrated) {
+            stopActiveAlert();
+            animationFrameId = requestAnimationFrame(processLoop);
+            return;
+          }
 
           // Early Distraction audio alert trigger
           if (result.isNewDistraction) {
@@ -346,6 +359,7 @@ export default function App() {
       <AlertModal
         state={metrics.state}
         score={metrics.score}
+        isCalibrated={metrics.calibration.isCalibrated}
         primaryAlertReason={metrics.primaryAlertReason}
         wideEyesDurationMs={metrics.wideEyesDurationMs}
         isWideEyesActive={metrics.isWideEyesActive}

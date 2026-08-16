@@ -13,13 +13,13 @@ interface Point3D {
   z?: number;
 }
 
-export function calculateMAR(landmarks: Point3D[]): number {
+export function calculateMAR(landmarks: Point3D[], aspectRatio: number = 1.0): number {
   if (!landmarks || landmarks.length < 400) return 0.2;
 
   const mouthIndices = CONFIG.FACEMESH_MOUTH;
-  const verticalInner = euclideanDistance2D(landmarks[mouthIndices[0].p1], landmarks[mouthIndices[0].p2]);
-  const verticalOuter = euclideanDistance2D(landmarks[mouthIndices[1].p1], landmarks[mouthIndices[1].p2]);
-  const horizontal    = euclideanDistance2D(landmarks[mouthIndices[2].p1], landmarks[mouthIndices[2].p2]);
+  const verticalInner = euclideanDistance2D(landmarks[mouthIndices[0].p1], landmarks[mouthIndices[0].p2], aspectRatio);
+  const verticalOuter = euclideanDistance2D(landmarks[mouthIndices[1].p1], landmarks[mouthIndices[1].p2], aspectRatio);
+  const horizontal    = euclideanDistance2D(landmarks[mouthIndices[2].p1], landmarks[mouthIndices[2].p2], aspectRatio);
 
   if (horizontal === 0) return 0.2;
   const avgVertical = (verticalInner + verticalOuter) / 2.0;
@@ -40,7 +40,8 @@ export class YawnAnalyzer {
   public analyze(
     landmarks: Point3D[] | null,
     nowMs: number,
-    calibration: CalibrationData
+    calibration: CalibrationData,
+    aspectRatio: number = 1.0
   ): { metrics: YawnMetrics; isNewYawnDetected: boolean } {
     if (!landmarks) {
       return {
@@ -54,7 +55,7 @@ export class YawnAnalyzer {
       };
     }
 
-    const rawMar = calculateMAR(landmarks);
+    const rawMar = calculateMAR(landmarks, aspectRatio);
     const mar = this.marEma.update(rawMar);
 
     // Adaptive threshold: calibrated threshold or standard tuned 0.48

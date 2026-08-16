@@ -38,7 +38,8 @@ export class HeadPoseAnalyzer {
     landmarks: Point3D[] | null,
     nowMs: number,
     isEyeClosed: boolean = false,
-    faceDetected: boolean = true
+    faceDetected: boolean = true,
+    aspectRatio: number = 1.0
   ): {
     metrics: HeadPoseMetrics;
     distractionMetrics: DistractionMetrics;
@@ -100,22 +101,22 @@ export class HeadPoseAnalyzer {
     const leftEye = landmarks[33];
     const rightEye = landmarks[263];
 
-    // 1. Roll estimation (head side tilt)
+    // 1. Roll estimation (head side tilt) in isotropic space
     const dy = rightEye.y - leftEye.y;
-    const dx = rightEye.x - leftEye.x;
+    const dx = (rightEye.x - leftEye.x) * aspectRatio;
     const rawRoll = (Math.atan2(dy, dx) * 180) / Math.PI;
 
-    // 2. Yaw estimation (head left/right rotation)
-    const distToLeftEye = Math.hypot(nose.x - leftEye.x, nose.y - leftEye.y);
-    const distToRightEye = Math.hypot(nose.x - rightEye.x, nose.y - rightEye.y);
+    // 2. Yaw estimation (head left/right rotation) in isotropic space
+    const distToLeftEye = Math.hypot((nose.x - leftEye.x) * aspectRatio, nose.y - leftEye.y);
+    const distToRightEye = Math.hypot((nose.x - rightEye.x) * aspectRatio, nose.y - rightEye.y);
     const yawRatio = (distToLeftEye - distToRightEye) / (distToLeftEye + distToRightEye || 0.001);
     const rawYaw = yawRatio * 55;
 
     // 3. Pitch estimation (head nodding down/up) using 3D face geometric proportions
     const eyeCenterY = (leftEye.y + rightEye.y) / 2;
-    const eyeDistance = Math.hypot(rightEye.x - leftEye.x, rightEye.y - leftEye.y) || 0.001;
+    const eyeDistance = Math.hypot((rightEye.x - leftEye.x) * aspectRatio, rightEye.y - leftEye.y) || 0.001;
 
-    // Vertical segment lengths normalized by eye width
+    // Vertical segment lengths normalized by eye width in isotropic space
     const upperSegY = (nose.y - eyeCenterY) / eyeDistance;        // Eyes-to-nose vertical distance
     const lowerSegY = (chin.y - nose.y) / eyeDistance;            // Nose-to-chin vertical distance
     const totalHeightRatio = (chin.y - forehead.y) / eyeDistance; // Total face height / width

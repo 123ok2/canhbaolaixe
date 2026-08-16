@@ -12,28 +12,32 @@ interface Point3D {
   z?: number;
 }
 
-// Calculate 2D Euclidean distance between 2 points in normalized screen space
-export function euclideanDistance2D(p1: Point3D, p2: Point3D): number {
-  const dx = p1.x - p2.x;
+// Calculate 2D Euclidean distance between 2 points in isotropic coordinate space
+export function euclideanDistance2D(p1: Point3D, p2: Point3D, aspectRatio: number = 1.0): number {
+  const dx = (p1.x - p2.x) * aspectRatio;
   const dy = p1.y - p2.y;
   return Math.hypot(dx, dy);
 }
 
-// Calculate Eye Aspect Ratio (EAR) using 6 distinct landmark coordinates
+// Calculate Eye Aspect Ratio (EAR) using 6 distinct landmark coordinates in isotropic space
 // EAR = (|p2 - p6| + |p3 - p5|) / (2 * |p1 - p4|)
-export function calculateEAR(landmarks: Point3D[], eyeIndices: typeof CONFIG.FACEMESH_LEFT_EYE): number {
+export function calculateEAR(
+  landmarks: Point3D[],
+  eyeIndices: typeof CONFIG.FACEMESH_LEFT_EYE,
+  aspectRatio: number = 1.0
+): number {
   if (!landmarks || landmarks.length < 400) return 0.3;
 
-  const v1 = euclideanDistance2D(landmarks[eyeIndices[0].p1], landmarks[eyeIndices[0].p2]);
-  const v2 = euclideanDistance2D(landmarks[eyeIndices[1].p1], landmarks[eyeIndices[1].p2]);
-  const h  = euclideanDistance2D(landmarks[eyeIndices[2].p1], landmarks[eyeIndices[2].p2]);
+  const v1 = euclideanDistance2D(landmarks[eyeIndices[0].p1], landmarks[eyeIndices[0].p2], aspectRatio);
+  const v2 = euclideanDistance2D(landmarks[eyeIndices[1].p1], landmarks[eyeIndices[1].p2], aspectRatio);
+  const h  = euclideanDistance2D(landmarks[eyeIndices[2].p1], landmarks[eyeIndices[2].p2], aspectRatio);
 
   if (h === 0) return 0.3;
   return (v1 + v2) / (2.0 * h);
 }
 
 // Calculate Iris vertical diameter vs Eye width for enhanced precision when landmarks >= 478
-export function calculateIrisOpenRatio(landmarks: Point3D[], isLeft: boolean): number | null {
+export function calculateIrisOpenRatio(landmarks: Point3D[], isLeft: boolean, aspectRatio: number = 1.0): number | null {
   if (!landmarks || landmarks.length < 478) return null;
 
   // Iris indices: Left center 468, Right center 473
@@ -51,8 +55,8 @@ export function calculateIrisOpenRatio(landmarks: Point3D[], isLeft: boolean): n
 
   if (!iris || !upper || !lower || !outer || !inner) return null;
 
-  const eyeWidth = euclideanDistance2D(outer, inner);
-  const eyelidHeight = euclideanDistance2D(upper, lower);
+  const eyeWidth = euclideanDistance2D(outer, inner, aspectRatio);
+  const eyelidHeight = euclideanDistance2D(upper, lower, aspectRatio);
 
   if (eyeWidth === 0) return null;
   return eyelidHeight / eyeWidth;
@@ -76,7 +80,8 @@ export class EyeAnalyzer {
   public analyze(
     landmarks: Point3D[] | null,
     nowMs: number,
-    calibration: CalibrationData
+    calibration: CalibrationData,
+    aspectRatio: number = 1.0
   ): { metrics: EyeMetrics; isLongClosureEvent: boolean } {
     if (!landmarks) {
       return {
@@ -92,8 +97,8 @@ export class EyeAnalyzer {
       };
     }
 
-    const rawLeftEar = calculateEAR(landmarks, CONFIG.FACEMESH_LEFT_EYE);
-    const rawRightEar = calculateEAR(landmarks, CONFIG.FACEMESH_RIGHT_EYE);
+    const rawLeftEar = calculateEAR(landmarks, CONFIG.FACEMESH_LEFT_EYE, aspectRatio);
+    const rawRightEar = calculateEAR(landmarks, CONFIG.FACEMESH_RIGHT_EYE, aspectRatio);
 
     // Apply EMA smoothing to EAR
     const leftEar = this.leftEarEma.update(rawLeftEar);
@@ -105,8 +110,8 @@ export class EyeAnalyzer {
       ? calibration.closedEarThreshold
       : CONFIG.DEFAULT_EAR_CLOSED_THRESHOLD;
 
-    // Raw closure check: EAR below threshold, or both eyes significantly drooping
-    const isCurrentlyClosed = averageEar < threshold || (leftEar < threshold * 1.08 && rightEar < threshold * 1.08);
+    // Raw closure check: EAR below threshold or significant bilateral droop
+    const isCurrentlyClosed = averageEar < threshold || (leftEar < threshold * 0.95 && rightEar < threshold * 0.95);
 
     let isLongClosureEvent = false;
 

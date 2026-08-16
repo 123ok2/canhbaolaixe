@@ -64,7 +64,7 @@ export class DrowsinessEngine {
   // Demo mode state
   private demoModeState: DemoModeState = 'OFF';
 
-  public processFrame(landmarks: Point3D[] | null, nowMs: number = Date.now()): {
+  public processFrame(landmarks: Point3D[] | null, nowMs: number = Date.now(), aspectRatio: number = 1.0): {
     metrics: DrowsinessMetrics;
     isNewLongClosure: boolean;
     isNewYawn: boolean;
@@ -82,35 +82,90 @@ export class DrowsinessEngine {
 
     // User-triggered calibration phase
     if (!this.calibration.isCalibrated && this.calibration.isCalibrating && landmarks) {
-      this.collectCalibrationSample(landmarks);
+      this.collectCalibrationSample(landmarks, aspectRatio);
     }
 
     const faceDetected = landmarks !== null && landmarks.length >= 400;
     let faceLostDurationMs = 0;
     let primaryAlertReason: import('../types').PrimaryAlertReason = null;
 
-    // Track face lost / leaving camera frame
-    if (!faceDetected) {
-      if (this.calibration.isCalibrated) {
-        if (this.faceLostSinceMs === 0) {
-          this.faceLostSinceMs = nowMs;
-        }
-        faceLostDurationMs = nowMs - this.faceLostSinceMs;
-      }
-    } else {
-      this.faceLostSinceMs = 0;
-    }
-
-    // Standard analysis
-    const { metrics: eyeMetrics, isLongClosureEvent } = this.eyeAnalyzer.analyze(landmarks, nowMs, this.calibration);
-    const { metrics: yawnMetrics, isNewYawnDetected } = this.yawnAnalyzer.analyze(landmarks, nowMs, this.calibration);
+    // Standard analysis with isotropic aspect ratio support
+    const { metrics: eyeMetrics, isLongClosureEvent: rawLongClosure } = this.eyeAnalyzer.analyze(landmarks, nowMs, this.calibration, aspectRatio);
+    const { metrics: yawnMetrics, isNewYawnDetected: rawNewYawn } = this.yawnAnalyzer.analyze(landmarks, nowMs, this.calibration, aspectRatio);
     // Strict eye closed check for head tilt: must be actually closed (EAR < closed threshold)
     const {
       metrics: headPose,
       distractionMetrics,
-      isNewHeadDropDetected,
-      isNewDistractionDetected
-    } = this.headPoseAnalyzer.analyze(landmarks, nowMs, eyeMetrics.isClosed, faceDetected);
+      isNewHeadDropDetected: rawHeadDrop,
+      isNewDistractionDetected: rawDistraction
+    } = this.headPoseAnalyzer.analyze(landmarks, nowMs, eyeMetrics.isClosed, faceDetected, aspectRatio);
+
+    // QUY TẮC BẮT BUỘC: Khi chưa hiệu chỉnh xong, TUYỆT ĐỐI KHÔNG tính điểm nguy hiểm và KHÔNG cảnh báo!
+    if (!this.calibration.isCalibrated) {
+      this.currentScore = 0;
+      this.currentState = DrowsinessState.ALERT;
+      this.scoreWindow = [];
+      this.faceLostSinceMs = 0;
+
+      const envDiag = this.environmentAnalyzer.analyze(
+        null,
+        headPose.pitch,
+        headPose.yaw,
+        headPose.roll,
+        faceDetected
+      );
+
+      return {
+        metrics: {
+          score: 0,
+          state: DrowsinessState.ALERT,
+          eyeMetrics,
+          yawnMetrics,
+          headPose,
+          distractionMetrics: {
+            ...distractionMetrics,
+            isDistracted: false,
+            distractionLevel: 'NONE'
+          },
+          calibration: { ...this.calibration },
+          isEnhancedMonitoring: false,
+          faceDetected,
+          faceLostDurationMs: 0,
+          primaryAlertReason: null,
+          wideEyesDurationMs: 0,
+          isWideEyesActive: false,
+          environment: {
+            lightingState: envDiag.lightingState,
+            lightingLevel: envDiag.lightingLevel,
+            angleStatus: envDiag.angleStatus,
+            angleMessage: envDiag.angleMessage,
+            lightingMessage: envDiag.lightingMessage,
+            fps: envDiag.fps
+          }
+        },
+        isNewLongClosure: false,
+        isNewYawn: false,
+        isNewHeadDrop: false,
+        isNewDistraction: false,
+        stateChanged: false,
+        previousState
+      };
+    }
+
+    let isLongClosureEvent = rawLongClosure;
+    let isNewYawnDetected = rawNewYawn;
+    let isNewHeadDropDetected = rawHeadDrop;
+    let isNewDistractionDetected = rawDistraction;
+
+    // Track face lost / leaving camera frame
+    if (!faceDetected) {
+      if (this.faceLostSinceMs === 0) {
+        this.faceLostSinceMs = nowMs;
+      }
+      faceLostDurationMs = nowMs - this.faceLostSinceMs;
+    } else {
+      this.faceLostSinceMs = 0;
+    }
 
     // Record session events
     if (isLongClosureEvent) this.sessionManager.recordLongClosure();
@@ -347,11 +402,11 @@ export class DrowsinessEngine {
     }
   }
 
-  private collectCalibrationSample(landmarks: Point3D[]): void {
-    const leftEar = calculateEAR(landmarks, CONFIG.FACEMESH_LEFT_EYE);
-    const rightEar = calculateEAR(landmarks, CONFIG.FACEMESH_RIGHT_EYE);
+  private collectCalibrationSample(landmarks: Point3D[], aspectRatio: number = 1.0): void {
+    const leftEar = calculateEAR(landmarks, CONFIG.FACEMESH_LEFT_EYE, aspectRatio);
+    const rightEar = calculateEAR(landmarks, CONFIG.FACEMESH_RIGHT_EYE, aspectRatio);
     const avgEar = (leftEar + rightEar) / 2.0;
-    const mar = calculateMAR(landmarks);
+    const mar = calculateMAR(landmarks, aspectRatio);
 
     this.calibrationEarSamples.push(avgEar);
     this.calibrationMarSamples.push(mar);
