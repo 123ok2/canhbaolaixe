@@ -126,6 +126,20 @@ export const AlertModal: React.FC<AlertModalProps> = ({
       };
     }
 
+    if (primaryAlertReason === 'YAWN') {
+      return {
+        title: 'CẢNH BÁO: PHÁT HIỆN NGÁP BUỒN NGỦ!',
+        subtitle: 'Bạn đã ngáp từ lần thứ 2 trở đi (dấu hiệu buồn ngủ / thiếu ngủ).',
+        message: 'Hãy mở to mắt, uống nước, bật quạt gió/điều hòa hoặc tìm trạm dừng nghỉ ngơi an toàn!',
+        levelText: 'CẢNH BÁO - NGÁP BUỒN NGỦ',
+        bgGradient: 'from-amber-950/98 via-slate-950 to-orange-950/95',
+        borderColor: 'border-amber-500',
+        textColor: 'text-amber-300',
+        btnBg: 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold',
+        icon: <AlertTriangle className="w-10 h-10 sm:w-14 sm:h-14 text-amber-400 animate-bounce" />
+      };
+    }
+
     if (primaryAlertReason === 'EARLY_DROWSINESS' || primaryAlertReason === 'DROWSY_DROOP') {
       return {
         title: 'CẢNH BÁO: CHỚM BUỒN NGỦ / MỆT MỎI!',

@@ -18,6 +18,7 @@ export function useAudioAlerts() {
   const activeAlarmIntervalRef = useRef<number | null>(null);
   const lastSpokenTimeRef = useRef<number>(0);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const isPlayingProtectedAlertRef = useRef<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isAudioUnlocked, setIsAudioUnlocked] = useState<boolean>(false);
   const [isPlayingEmergency, setIsPlayingEmergency] = useState<boolean>(false);
@@ -123,7 +124,15 @@ export function useAudioAlerts() {
     unlockAudio();
   }, [unlockAudio]);
 
-  const stopActiveAlert = useCallback(() => {
+  const stopActiveAlert = useCallback((force: boolean = false) => {
+    // If a protected voice alert (e.g. yawn drowsiness alert) is playing to completion,
+    // only stop it if force === true (user clicked "TÔI ĐÃ TỈNH", clicked 'X', or emergency siren triggered)
+    if (!force && isPlayingProtectedAlertRef.current) {
+      return;
+    }
+
+    isPlayingProtectedAlertRef.current = false;
+
     if (activeAlarmIntervalRef.current !== null) {
       clearInterval(activeAlarmIntervalRef.current);
       activeAlarmIntervalRef.current = null;
@@ -152,8 +161,11 @@ export function useAudioAlerts() {
   }, []);
 
   // Speech synthesis fallback (Tier 3)
-  const speakVoiceAlert = useCallback((text: string, minIntervalMs: number = 2000) => {
-    if (isMuted || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  const speakVoiceAlert = useCallback((text: string, minIntervalMs: number = 2000, onEndCallback?: () => void) => {
+    if (isMuted || typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      if (onEndCallback) onEndCallback();
+      return;
+    }
     const now = Date.now();
     if (now - lastSpokenTimeRef.current < minIntervalMs) return;
     lastSpokenTimeRef.current = now;
@@ -170,6 +182,11 @@ export function useAudioAlerts() {
       utterance.pitch = 1.1;
       utterance.volume = 1.0;
 
+      if (onEndCallback) {
+        utterance.onend = onEndCallback;
+        utterance.onerror = onEndCallback;
+      }
+
       const voices = window.speechSynthesis.getVoices();
       const viVoice = voices.find((v) => 
         v.lang === 'vi-VN' || 
@@ -185,7 +202,7 @@ export function useAudioAlerts() {
 
       window.speechSynthesis.speak(utterance);
     } catch {
-      // Safe catch
+      if (onEndCallback) onEndCallback();
     }
   }, [isMuted]);
 
@@ -195,11 +212,12 @@ export function useAudioAlerts() {
     minIntervalMs: number = 1800,
     loop: boolean = false,
     synthFallbackType: 'chime' | 'warning' | 'siren' = 'warning',
-    speechFallbackText: string = 'Cảnh báo tài xế buồn ngủ!'
+    speechFallbackText: string = 'Cảnh báo tài xế buồn ngủ!',
+    isProtected: boolean = false
   ) => {
     if (isMuted || typeof window === 'undefined') return;
     const now = Date.now();
-    if (!loop && now - lastSpokenTimeRef.current < minIntervalMs) return;
+    if (!loop && now - lastSpokenTimeRef.current < minIntervalMs && !isProtected) return;
     lastSpokenTimeRef.current = now;
 
     // Ensure audio context is ready
@@ -227,6 +245,13 @@ export function useAudioAlerts() {
       audio.currentTime = 0;
       currentAudioRef.current = audio;
 
+      if (isProtected) {
+        isPlayingProtectedAlertRef.current = true;
+        audio.onended = () => {
+          isPlayingProtectedAlertRef.current = false;
+        };
+      }
+
       if (loop) {
         setIsPlayingEmergency(true);
       }
@@ -247,7 +272,9 @@ export function useAudioAlerts() {
           }
 
           // TIER 3: Vietnamese Web Speech TTS Fallback
-          speakVoiceAlert(speechFallbackText, 1500);
+          speakVoiceAlert(speechFallbackText, 1500, () => {
+            if (isProtected) isPlayingProtectedAlertRef.current = false;
+          });
         });
       }
     } catch (e) {
@@ -261,15 +288,34 @@ export function useAudioAlerts() {
       } else {
         audioSynthesizer.playAttentionChime();
       }
-      speakVoiceAlert(speechFallbackText, 1500);
+      speakVoiceAlert(speechFallbackText, 1500, () => {
+        if (isProtected) isPlayingProtectedAlertRef.current = false;
+      });
     }
   }, [isMuted, unlockAudio, getSoundUrl, speakVoiceAlert]);
+
+  // Cảnh báo buồn ngủ khi ngáp từ lần thứ 2 trở đi:
+  // Phát trọn vẹn 100% âm thanh không được ngắt quãng cho đến lần ngáp tiếp theo
+  const playYawnDrowsinessAlert = useCallback((yawnCount: number = 2) => {
+    if (isMuted || typeof window === 'undefined') return;
+    unlockAudio();
+
+    // Sử dụng file âm thanh cảnh báo buồn ngủ studio: "Chú ý! Phát hiện buồn ngủ sớm, hãy tập trung lái xe!"
+    playCustomAudioFile(
+      'alert_buon_ngu_som.mp3',
+      1000,
+      false,
+      'warning',
+      `Chú ý! Bạn đã ngáp ${yawnCount} lần, phát hiện dấu hiệu buồn ngủ. Hãy tập trung lái xe hoặc dừng xe nghỉ ngơi!`,
+      true // isProtected = true -> phát trọn vẹn toàn bộ câu nói không bị ngắt quãng
+    );
+  }, [isMuted, unlockAudio, playCustomAudioFile]);
 
   // Continuous emergency siren with voice warning (Hú còi liên tục + Giọng cảnh báo)
   const playContinuousEmergencyAlert = useCallback(() => {
     if (isMuted) return;
     unlockAudio();
-    stopActiveAlert();
+    stopActiveAlert(true);
     playCustomAudioFile(
       'alert_khan_cap_lien_tuc.mp3',
       0,
@@ -459,6 +505,7 @@ export function useAudioAlerts() {
     playLevel3Alert,
     playEarlyDistractionAlert,
     playEarlyDrowsinessAlert,
+    playYawnDrowsinessAlert,
     playContinuousEmergencyAlert,
     isPlayingEmergency,
     playCustomAudioFile,

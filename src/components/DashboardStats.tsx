@@ -3,7 +3,7 @@
  * Fully Optimized for Mobile & Desktop
  */
 
-import { Activity, AlertTriangle, Clock, Compass, Eye, Moon, Shield, Smile } from 'lucide-react';
+import { Activity, AlertTriangle, Clock, Compass, Eye, Moon, Smile } from 'lucide-react';
 import React from 'react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { SessionStats } from '../types';
@@ -29,21 +29,6 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({ stats, currentSc
 
   const totalAlerts = stats.alertLevel1Count + stats.alertLevel2Count + stats.alertLevel3Count;
 
-  // Calculate overall safety rating
-  const getSafetyRating = () => {
-    if (stats.averageScore <= 25 && stats.totalDangerDurationSeconds === 0) {
-      return { label: 'XUẤT SẮC', color: 'text-emerald-300 bg-emerald-950/80 border-emerald-700/80' };
-    } else if (stats.averageScore <= 50) {
-      return { label: 'AN TOÀN', color: 'text-cyan-300 bg-cyan-950/80 border-cyan-700/80' };
-    } else if (stats.averageScore <= 70) {
-      return { label: 'CẦN CHÚ Ý', color: 'text-amber-300 bg-amber-950/80 border-amber-700/80' };
-    } else {
-      return { label: 'NGUY HIỂM', color: 'text-red-300 bg-red-950/90 border-red-600' };
-    }
-  };
-
-  const safetyRating = getSafetyRating();
-
   // Prepare chart data points
   const chartData = stats.scoreHistory.map((item) => {
     const date = new Date(item.timestamp);
@@ -56,8 +41,8 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({ stats, currentSc
 
   return (
     <div className="space-y-3 sm:space-y-4">
-      {/* Key Metrics Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-3">
+      {/* Key Metrics Grid (6 Metric Cards) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
         {/* 1. Driving Duration */}
         <div className="bg-slate-900/90 border border-slate-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 shadow-lg flex flex-col justify-between">
           <div className="flex items-center gap-1.5 text-slate-400 text-[11px] sm:text-xs font-medium">
@@ -138,21 +123,6 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({ stats, currentSc
           <div className="text-lg sm:text-xl font-black font-mono text-red-400 mt-1 flex items-baseline gap-1">
             {stats.totalDangerDurationSeconds}
             <span className="text-[10px] text-slate-500 font-normal font-sans">giây</span>
-          </div>
-        </div>
-
-        {/* 7. Safety Level */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 shadow-lg flex flex-col justify-between col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-1">
-          <div className="flex items-center gap-1.5 text-slate-400 text-[11px] sm:text-xs font-medium">
-            <div className="w-5 h-5 rounded-md bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
-              <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-            </div>
-            <span className="truncate">Đánh giá an toàn</span>
-          </div>
-          <div className="mt-1">
-            <span className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-bold border ${safetyRating.color}`}>
-              {safetyRating.label}
-            </span>
           </div>
         </div>
       </div>

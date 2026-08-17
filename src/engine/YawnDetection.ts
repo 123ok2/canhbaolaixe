@@ -41,7 +41,8 @@ export class YawnAnalyzer {
     landmarks: Point3D[] | null,
     nowMs: number,
     calibration: CalibrationData,
-    aspectRatio: number = 1.0
+    aspectRatio: number = 1.0,
+    minYawnDurationMs: number = CONFIG.MIN_YAWN_DURATION_MS
   ): { metrics: YawnMetrics; isNewYawnDetected: boolean } {
     if (!landmarks) {
       return {
@@ -73,8 +74,8 @@ export class YawnAnalyzer {
       }
       this.currentYawnDurationMs = nowMs - this.lastMouthOpenTimeMs;
 
-      // When mouth has been open >= 1000ms (1.0 second), count as a full genuine yawn
-      if (this.currentYawnDurationMs >= CONFIG.MIN_YAWN_DURATION_MS) {
+      // When mouth has been open >= minYawnDurationMs (default 1.0s or sensitivity setting), count as genuine yawn
+      if (this.currentYawnDurationMs >= minYawnDurationMs) {
         this.isCurrentlyYawning = true;
         if (!this.yawnRecordedForThisSession) {
           this.totalYawns++;
@@ -89,7 +90,7 @@ export class YawnAnalyzer {
           this.mouthClosedSinceMs = nowMs;
         }
 
-        // If mouth has remained closed for > 250ms, conclude the yawn episode
+        // If mouth has remained closed for > 250ms, conclude the yawn episode cleanly
         if (nowMs - this.mouthClosedSinceMs > 250) {
           this.lastMouthOpenTimeMs = 0;
           this.currentYawnDurationMs = 0;

@@ -68,6 +68,7 @@ export class DrowsinessEngine {
     metrics: DrowsinessMetrics;
     isNewLongClosure: boolean;
     isNewYawn: boolean;
+    isYawnAlertTriggered: boolean;
     isNewHeadDrop: boolean;
     isNewDistraction: boolean;
     stateChanged: boolean;
@@ -89,9 +90,18 @@ export class DrowsinessEngine {
     let faceLostDurationMs = 0;
     let primaryAlertReason: import('../types').PrimaryAlertReason = null;
 
+    // Sensitivity configuration thresholds
+    const sensConfig = CONFIG.SENSITIVITY_PRESETS[this.sensitivityLevel] || CONFIG.SENSITIVITY_PRESETS[3];
+
     // Standard analysis with isotropic aspect ratio support
     const { metrics: eyeMetrics, isLongClosureEvent: rawLongClosure } = this.eyeAnalyzer.analyze(landmarks, nowMs, this.calibration, aspectRatio);
-    const { metrics: yawnMetrics, isNewYawnDetected: rawNewYawn } = this.yawnAnalyzer.analyze(landmarks, nowMs, this.calibration, aspectRatio);
+    const { metrics: yawnMetrics, isNewYawnDetected: rawNewYawn } = this.yawnAnalyzer.analyze(
+      landmarks,
+      nowMs,
+      this.calibration,
+      aspectRatio,
+      sensConfig.yawnDurationMs || CONFIG.MIN_YAWN_DURATION_MS
+    );
     // Strict eye closed check for head tilt: must be actually closed (EAR < closed threshold)
     const {
       metrics: headPose,
@@ -145,6 +155,7 @@ export class DrowsinessEngine {
         },
         isNewLongClosure: false,
         isNewYawn: false,
+        isYawnAlertTriggered: false,
         isNewHeadDrop: false,
         isNewDistraction: false,
         stateChanged: false,
@@ -206,9 +217,6 @@ export class DrowsinessEngine {
 
     // Check if within suppression grace period after manual dismiss
     const isSuppressed = nowMs < this.suppressAlertUntilMs;
-
-    // Sensitivity configuration thresholds
-    const sensConfig = CONFIG.SENSITIVITY_PRESETS[this.sensitivityLevel] || CONFIG.SENSITIVITY_PRESETS[3];
 
     // Raw score calculation & immediate priority triggers
     let targetScore = this.currentScore;
@@ -285,10 +293,19 @@ export class DrowsinessEngine {
       }
     }
 
-    // 5. Yawn Detection (Ngáp)
+    // 5. Yawn Detection (Ngáp: Từ lần thứ 2 trở đi kích hoạt cảnh báo buồn ngủ mạnh mẽ)
+    const isYawnAlertTriggered = isNewYawnDetected && yawnMetrics.yawnCount >= 2;
+
     if (yawnMetrics.isYawning) {
-      if (!primaryAlertReason) primaryAlertReason = 'EARLY_DROWSINESS';
-      targetScore = Math.max(targetScore, 48);
+      if (yawnMetrics.yawnCount >= 2) {
+        if (!primaryAlertReason) primaryAlertReason = 'YAWN';
+        immediateHighRisk = true;
+        targetScore = Math.max(targetScore, 62 * sensConfig.scoreMultiplier);
+      } else {
+        // Lần ngáp đầu tiên: ghi nhận thống kê nhẹ nhàng
+        if (!primaryAlertReason) primaryAlertReason = 'YAWN';
+        targetScore = Math.max(targetScore, 20);
+      }
     }
 
     // If no urgent alerts and driver is alert, decay score smoothly
@@ -316,6 +333,8 @@ export class DrowsinessEngine {
         this.currentState = DrowsinessState.DANGER;
       } else if (targetScore >= CONFIG.SCORE_STATE_WARNING) {
         this.currentState = DrowsinessState.WARNING;
+      } else if (targetScore >= CONFIG.SCORE_STATE_TIRED) {
+        this.currentState = DrowsinessState.TIRED;
       }
     } else {
       this.scoreWindow.push(targetScore);
@@ -374,6 +393,7 @@ export class DrowsinessEngine {
       },
       isNewLongClosure: isLongClosureEvent,
       isNewYawn: isNewYawnDetected,
+      isYawnAlertTriggered,
       isNewHeadDrop: isNewHeadDropDetected,
       isNewDistraction: isNewDistractionDetected,
       stateChanged,
@@ -605,6 +625,7 @@ export class DrowsinessEngine {
       },
       isNewLongClosure: eyeClosed,
       isNewYawn: isYawning,
+      isYawnAlertTriggered: isYawning,
       isNewHeadDrop: isHeadDropped,
       isNewDistraction: false,
       stateChanged: this.currentState !== previousState,

@@ -39,6 +39,7 @@ export default function App() {
     playLevel3Alert,
     playEarlyDistractionAlert,
     playEarlyDrowsinessAlert,
+    playYawnDrowsinessAlert,
     playContinuousEmergencyAlert,
     isPlayingEmergency,
     playCustomAudioFile,
@@ -197,9 +198,20 @@ export default function App() {
 
           // QUY TẮC BẮT BUỘC: Khi chưa hiệu chỉnh xong, KHÔNG BAO GIỜ phát âm thanh cảnh báo hoặc rung
           if (!result.metrics.calibration.isCalibrated) {
-            stopActiveAlert();
+            stopActiveAlert(true);
             animationFrameId = requestAnimationFrame(processLoop);
             return;
+          }
+
+          // CẢNH BÁO BUỒN NGỦ KHI NGÁP (TỪ LẦN THỨ 2 TRỞ ĐI):
+          // Phát âm thanh cảnh báo buồn ngủ trọn vẹn 100% không bị ngắt quãng cho đến lần ngáp tiếp theo
+          if (result.isYawnAlertTriggered) {
+            initAudioContext();
+            playYawnDrowsinessAlert(result.metrics.yawnMetrics.yawnCount);
+            engine.getSessionManager().recordAlertLevel(2);
+            if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+              try { navigator.vibrate([250, 120, 250]); } catch {}
+            }
           }
 
           // Early Distraction audio alert trigger
@@ -216,10 +228,15 @@ export default function App() {
             initAudioContext();
 
             if (result.metrics.state === DrowsinessState.TIRED) {
-              playLevel1Alert(result.metrics.primaryAlertReason);
+              // If not triggered by yawn alert, play standard level 1 alert
+              if (!result.isYawnAlertTriggered) {
+                playLevel1Alert(result.metrics.primaryAlertReason);
+              }
               engine.getSessionManager().recordAlertLevel(1);
             } else if (result.metrics.state === DrowsinessState.WARNING) {
-              playLevel2Alert(result.metrics.primaryAlertReason);
+              if (!result.isYawnAlertTriggered) {
+                playLevel2Alert(result.metrics.primaryAlertReason);
+              }
               engine.getSessionManager().recordAlertLevel(2);
               if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
                 try { navigator.vibrate([250, 100, 250]); } catch {}
@@ -231,7 +248,8 @@ export default function App() {
                 try { navigator.vibrate([500, 150, 500, 150, 1000]); } catch {}
               }
             } else if (result.metrics.state === DrowsinessState.ALERT) {
-              stopActiveAlert();
+              // Routine recovery: don't force kill protected voice alerts currently speaking
+              stopActiveAlert(false);
               if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
                 try { navigator.vibrate(0); } catch {}
               }
@@ -248,17 +266,17 @@ export default function App() {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [cameraState.isStreaming, videoRef, isPlayingEmergency, initAudioContext, playEarlyDistractionAlert, playLevel1Alert, playLevel2Alert, playLevel3Alert, stopActiveAlert]);
+  }, [cameraState.isStreaming, videoRef, isPlayingEmergency, initAudioContext, playEarlyDistractionAlert, playYawnDrowsinessAlert, playLevel1Alert, playLevel2Alert, playLevel3Alert, stopActiveAlert]);
 
   // "TÔI ĐÃ TỈNH" Click Handler
   const handleConfirmAwake = useCallback(() => {
-    stopActiveAlert();
+    stopActiveAlert(true);
     engine.setEnhancedMonitoring(5); // 5 minutes enhanced monitoring
   }, [stopActiveAlert]);
 
   // Instant 'X' / Backdrop / Key Dismissal (Không làm phiền lái xe)
   const handleDismissInstant = useCallback(() => {
-    stopActiveAlert();
+    stopActiveAlert(true);
     engine.dismissAlertImmediate();
   }, [stopActiveAlert]);
 

@@ -454,8 +454,14 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
           </div>
 
           {yawnMetrics.isYawning && (
-            <div className="bg-amber-950/90 text-amber-300 backdrop-blur-md px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border border-amber-700 font-bold animate-pulse text-[10px]">
-              😮 ĐANG NGÁP
+            <div className={`backdrop-blur-md px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border font-bold animate-pulse text-[10px] ${
+              yawnMetrics.yawnCount >= 2
+                ? 'bg-red-950/90 text-red-300 border-red-600 shadow-[0_0_12px_rgba(239,68,68,0.4)]'
+                : 'bg-amber-950/90 text-amber-300 border-amber-700'
+            }`}>
+              {yawnMetrics.yawnCount >= 2
+                ? `⚠️ CẢNH BÁO BUỒN NGỦ: NGÁP LẦN ${yawnMetrics.yawnCount}`
+                : `😮 ĐANG NGÁP (LẦN ${yawnMetrics.yawnCount})`}
             </div>
           )}
 
