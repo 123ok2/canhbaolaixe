@@ -29,6 +29,9 @@ export interface HeadPoseMetrics {
   pitch: number; // Down / Up (- is down)
   yaw: number;   // Left / Right
   roll: number;  // Tilt left / right
+  relativePitch?: number; // Pitch offset relative to calibrated phone mounting angle
+  relativeYaw?: number;   // Yaw offset relative to calibrated phone mounting angle
+  relativeRoll?: number;  // Roll offset relative to calibrated phone mounting angle
   isHeadDropped: boolean;
   headDropDurationMs: number;
   headDropCount: number;
@@ -61,12 +64,20 @@ export interface DistractionMetrics {
 
 export interface CalibrationData {
   isCalibrated: boolean;
-  isCalibrating: boolean;    // Whether user clicked "Bắt đầu hiệu chỉnh"
-  baselineEar: number;      // Normal open eye EAR
+  isCalibrating: boolean;     // Whether user clicked "Bắt đầu hiệu chỉnh"
+  baselineEar: number;       // Normal open eye EAR
   closedEarThreshold: number; // Dynamic threshold based on user
-  baselineMar: number;      // Normal closed mouth MAR
-  openMarThreshold: number;  // Dynamic yawn threshold
+  baselineMar: number;       // Normal closed mouth MAR
+  openMarThreshold: number;   // Dynamic yawn threshold
   samplesCount: number;
+  
+  // Góc đặt điện thoại & vị trí khuôn mặt tài xế đã chuẩn hóa
+  baselinePitch: number;      // Góc ngẩng/cúi của điện thoại so với khuôn mặt (độ)
+  baselineYaw: number;        // Góc xoay trái/phải do vị trí kẹp điện thoại trên xe (độ)
+  baselineRoll: number;       // Góc nghiêng giá đỡ điện thoại (độ)
+  baselineFaceCenterX: number;// Vị trí tâm khuôn mặt trục X (0 - 1)
+  baselineFaceCenterY: number;// Vị trí tâm khuôn mặt trục Y (0 - 1)
+  baselineFaceScale: number;  // Kích thước tỷ lệ khuôn mặt (khoảng cách chuẩn từ mắt đến camera)
 }
 
 export type PrimaryAlertReason = 

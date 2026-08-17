@@ -1,11 +1,14 @@
 /**
- * Interactive Facial Calibration & Alignment Modal with Live Camera Feed,
- * Real-time Cyber Biometric Face Mesh & Smart Auto-Countdown
+ * Interactive Facial & Phone Mounting Angle Calibration Modal
+ * Real-time Phone Placement Angle Diagnosis & Auto-Start Live Monitoring
  */
 
-import { CheckCircle2, Eye, RefreshCw, ShieldCheck, Smartphone, Smile, Sparkles, UserCheck, Video } from 'lucide-react';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { CheckCircle2, Compass, Eye, RefreshCw, ShieldCheck, Smartphone, Sparkles, UserCheck, Video } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CONFIG } from '../config/constants';
+import { calculateEAR } from '../engine/EyeAnalysis';
+import { HeadPoseAnalyzer } from '../engine/HeadPoseDetection';
+import { calculateMAR } from '../engine/YawnDetection';
 import { CalibrationData } from '../types';
 
 interface Point3D {
@@ -36,22 +39,28 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
   onSkip
 }) => {
   const [countdown, setCountdown] = useState<number | null>(null);
-  const [isFaceStable, setIsFaceStable] = useState<boolean>(false);
   const [isCapturingFlash, setIsCapturingFlash] = useState<boolean>(false);
 
-  // Audio Context for countdown beeps
+  // Audio Context for countdown beeps and success chime
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const stableDetectionTimerRef = useRef<number | null>(null);
   const countdownIntervalRef = useRef<number | null>(null);
   const onBeginCalibrationRef = useRef(onBeginCalibration);
+  const wasCalibratingRef = useRef<boolean>(false);
 
   // Keep latest reference to onBeginCalibration to prevent re-render cancellation
   useEffect(() => {
     onBeginCalibrationRef.current = onBeginCalibration;
   }, [onBeginCalibration]);
+
+  // Track calibration active state to trigger completion sound
+  useEffect(() => {
+    if (calibration.isCalibrating) {
+      wasCalibratingRef.current = true;
+    }
+  }, [calibration.isCalibrating]);
 
   // Robustly bind live video stream to preview video
   useEffect(() => {
@@ -64,6 +73,34 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
       videoEl.play().catch(() => {});
     }
   }, [stream, videoRef, isStreaming]);
+
+  // Live real-time analysis of face pose and angle relative to phone mount
+  const livePose = useMemo(() => {
+    if (!landmarks || landmarks.length < 400) return null;
+    const pose = HeadPoseAnalyzer.calculateRawPose(landmarks);
+    const ear = (calculateEAR(landmarks, CONFIG.FACEMESH_LEFT_EYE) + calculateEAR(landmarks, CONFIG.FACEMESH_RIGHT_EYE)) / 2;
+    const mar = calculateMAR(landmarks);
+    return {
+      pitch: Math.round(pose.pitch * 10) / 10,
+      yaw: Math.round(pose.yaw * 10) / 10,
+      roll: Math.round(pose.roll * 10) / 10,
+      centerX: pose.centerX,
+      centerY: pose.centerY,
+      scale: pose.scale,
+      ear: Math.round(ear * 100) / 100,
+      mar: Math.round(mar * 100) / 100
+    };
+  }, [landmarks]);
+
+  // Evaluate alignment quality
+  const isAligned = useMemo(() => {
+    if (!livePose) return false;
+    // Face is roughly centered in frame and reasonable scale
+    const isCentered = livePose.centerX >= 0.25 && livePose.centerX <= 0.75 && livePose.centerY >= 0.20 && livePose.centerY <= 0.80;
+    const isGoodDistance = livePose.scale >= 0.12 && livePose.scale <= 0.50;
+    const isEyesOpen = livePose.ear >= 0.20;
+    return isCentered && isGoodDistance && isEyesOpen;
+  }, [livePose]);
 
   // Draw real-time face mesh on the preview canvas
   useEffect(() => {
@@ -90,9 +127,9 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    const primaryColor = '#06b6d4';
-    const secondaryColor = '#22d3ee';
-    const glowColor = 'rgba(6, 182, 212, 0.75)';
+    const primaryColor = isAligned ? '#10b981' : '#06b6d4';
+    const secondaryColor = isAligned ? '#34d399' : '#22d3ee';
+    const glowColor = isAligned ? 'rgba(16, 185, 129, 0.75)' : 'rgba(6, 182, 212, 0.75)';
 
     // Helper: Draw smooth loop
     const drawContour = (
@@ -117,7 +154,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
       ctx.stroke();
     };
 
-    // 1. Subtle Wireframe Cyber Mesh
+    // 1. Wireframe Cyber Mesh
     ctx.save();
     ctx.globalAlpha = 0.22;
     ctx.lineWidth = 0.9;
@@ -168,7 +205,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
     ctx.restore();
 
     ctx.restore();
-  }, [landmarks, isStreaming]);
+  }, [landmarks, isStreaming, isAligned]);
 
   const playBeep = useCallback((freq: number, duration: number = 0.1) => {
     try {
@@ -203,40 +240,44 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
     }
   }, []);
 
-  // Stable Face Detection Tracker
-  useEffect(() => {
-    if (!isStreaming || calibration.isCalibrated || calibration.isCalibrating) {
-      setIsFaceStable(false);
-      if (stableDetectionTimerRef.current) {
-        clearTimeout(stableDetectionTimerRef.current);
-        stableDetectionTimerRef.current = null;
+  // Ascending celebration chord when calibration succeeds and activates
+  const playSuccessChime = useCallback(() => {
+    try {
+      if (!audioCtxRef.current) {
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (AudioCtx) {
+          audioCtxRef.current = new AudioCtx();
+        }
       }
-      return;
-    }
+      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+      if (!audioCtxRef.current) return;
 
-    if (hasLandmarks) {
-      if (!stableDetectionTimerRef.current && !isFaceStable && countdown === null) {
-        // Face is present: after 350ms of stable face, auto-start countdown
-        stableDetectionTimerRef.current = window.setTimeout(() => {
-          setIsFaceStable(true);
-          startCountdown();
-        }, 350);
-      }
-    } else {
-      // Face lost
-      if (stableDetectionTimerRef.current) {
-        clearTimeout(stableDetectionTimerRef.current);
-        stableDetectionTimerRef.current = null;
-      }
-      setIsFaceStable(false);
-    }
+      const ctx = audioCtxRef.current;
+      const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const startTime = ctx.currentTime + i * 0.09;
+        const duration = 0.25;
 
-    return () => {
-      if (stableDetectionTimerRef.current) {
-        clearTimeout(stableDetectionTimerRef.current);
-      }
-    };
-  }, [hasLandmarks, isStreaming, calibration.isCalibrated, calibration.isCalibrating, countdown, isFaceStable]);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, startTime);
+        gain.gain.setValueAtTime(0.001, startTime);
+        gain.gain.linearRampToValueAtTime(0.20, startTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+      });
+    } catch {
+      // safe fallback
+    }
+  }, []);
 
   // Countdown timer logic (3 -> 2 -> 1 -> 0)
   const startCountdown = useCallback(() => {
@@ -282,13 +323,18 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
       if (countdownIntervalRef.current) {
         clearInterval(countdownIntervalRef.current);
       }
-      if (stableDetectionTimerRef.current) {
-        clearTimeout(stableDetectionTimerRef.current);
-      }
     };
   }, []);
 
-  // If calibrated or camera not streaming, don't render UI
+  // Khi hoàn thành hiệu chuẩn (isCalibrated = true): Phát âm thanh xác nhận và TỰ ĐỘNG VÀO HOẠT ĐỘNG LUÔN
+  useEffect(() => {
+    if (calibration.isCalibrated && wasCalibratingRef.current) {
+      wasCalibratingRef.current = false;
+      playSuccessChime();
+    }
+  }, [calibration.isCalibrated, playSuccessChime]);
+
+  // TỰ ĐỘNG ĐÓNG MODAL VÀ HOẠT ĐỘNG NGAY KHI ĐÃ HIỆU CHUẨN XONG
   if (calibration.isCalibrated || !isStreaming) return null;
 
   const totalFrames = CONFIG.CALIBRATION_FRAMES_REQUIRED;
@@ -296,9 +342,9 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
   const progressPercent = Math.round((currentCount / totalFrames) * 100);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto bg-slate-900/95 border border-cyan-500/40 rounded-3xl p-4 sm:p-6 shadow-2xl shadow-cyan-950/70 text-center backdrop-blur-md">
-        {/* Glow ambient background accents */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="relative w-full max-w-lg max-h-[94vh] overflow-y-auto bg-slate-900/95 border border-cyan-500/40 rounded-3xl p-4 sm:p-6 shadow-2xl shadow-cyan-950/80 text-center backdrop-blur-md">
+        {/* Ambient glow */}
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
 
@@ -310,20 +356,19 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
         {/* Top Header Badge */}
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-semibold mb-2">
           <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Bước 1: Xác thực Khuôn mặt & Căn chỉnh Góc nhìn</span>
+          <span>Bước 1: Hiệu chỉnh Góc Điện thoại & Khuôn mặt Chuẩn</span>
         </div>
 
         {/* Title */}
         <h2 className="text-lg sm:text-xl font-bold text-white mb-1">
-          Căn chỉnh & Hiệu chỉnh Khuôn mặt
+          Căn chỉnh Vị trí & Góc Giá Đỡ Điện Thoại
         </h2>
-        <p className="text-xs text-slate-400 mb-4 max-w-sm mx-auto leading-relaxed">
-          Hãy giữ điện thoại đối diện tầm mắt. Hệ thống sẽ tự động nhận diện và đếm ngược để lưu thông số mắt & miệng chuẩn của bạn.
+        <p className="text-xs text-slate-400 mb-3 max-w-md mx-auto leading-relaxed">
+          Hệ thống sẽ đo góc đặt điện thoại thực tế (taplo/kính lái) và lưu hướng nhìn thẳng của bạn làm chuẩn, sau đó sẽ <strong>tự động kích hoạt giám sát an toàn</strong>.
         </p>
 
-        {/* Live Camera Viewport with Face Oval Guideline */}
-        <div className="relative w-full h-60 sm:h-72 bg-slate-950 rounded-2xl border-2 border-cyan-500/40 overflow-hidden mb-4 flex items-center justify-center group shadow-2xl">
-          {/* Real-time Video Stream */}
+        {/* Camera Viewport with Face Target HUD */}
+        <div className="relative w-full h-56 sm:h-64 bg-slate-950 rounded-2xl border-2 border-cyan-500/40 overflow-hidden mb-3.5 flex items-center justify-center group shadow-2xl">
           <video
             ref={previewVideoRef}
             autoPlay
@@ -332,7 +377,6 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
             className="w-full h-full object-cover transform -scale-x-100 bg-slate-950"
           />
 
-          {/* Real-time Canvas Mesh Overlay */}
           <canvas
             ref={previewCanvasRef}
             className="absolute inset-0 w-full h-full object-cover pointer-events-none transform -scale-x-100 z-10"
@@ -341,20 +385,22 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
           {/* Biometric Face Alignment Oval HUD */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
             <div
-              className={`w-40 h-52 sm:w-48 sm:h-60 rounded-[50%] border-2 transition-all duration-300 flex items-center justify-center relative ${
-                hasLandmarks
-                  ? 'border-cyan-400 shadow-[0_0_25px_rgba(6,182,212,0.45)] scale-100'
+              className={`w-36 h-48 sm:w-44 sm:h-56 rounded-[50%] border-2 transition-all duration-300 flex items-center justify-center relative ${
+                isAligned
+                  ? 'border-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.45)] scale-100'
+                  : hasLandmarks
+                  ? 'border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.35)] scale-98'
                   : 'border-amber-400/80 border-dashed animate-pulse scale-95'
               }`}
             >
               {/* Corner Biometric Brackets */}
-              <div className="absolute -top-1 -left-1 w-3.5 h-3.5 border-t-2 border-l-2 border-cyan-300" />
-              <div className="absolute -top-1 -right-1 w-3.5 h-3.5 border-t-2 border-r-2 border-cyan-300" />
-              <div className="absolute -bottom-1 -left-1 w-3.5 h-3.5 border-b-2 border-l-2 border-cyan-300" />
-              <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 border-b-2 border-r-2 border-cyan-300" />
+              <div className={`absolute -top-1 -left-1 w-3.5 h-3.5 border-t-2 border-l-2 ${isAligned ? 'border-emerald-300' : 'border-cyan-300'}`} />
+              <div className={`absolute -top-1 -right-1 w-3.5 h-3.5 border-t-2 border-r-2 ${isAligned ? 'border-emerald-300' : 'border-cyan-300'}`} />
+              <div className={`absolute -bottom-1 -left-1 w-3.5 h-3.5 border-b-2 border-l-2 ${isAligned ? 'border-emerald-300' : 'border-cyan-300'}`} />
+              <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 border-b-2 border-r-2 ${isAligned ? 'border-emerald-300' : 'border-cyan-300'}`} />
 
               {/* Center Eye Level Target Guide */}
-              <div className="absolute inset-x-3 h-0.5 bg-cyan-400/30 shadow-xs shadow-cyan-400/50" />
+              <div className={`absolute inset-x-3 h-0.5 ${isAligned ? 'bg-emerald-400/50 shadow-emerald-400' : 'bg-cyan-400/30'}`} />
 
               {/* Scanning Laser Line when calibrating */}
               {calibration.isCalibrating && (
@@ -366,78 +412,118 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
           {/* Real-time Status Overlay Pill */}
           <div className="absolute bottom-2.5 inset-x-3 flex items-center justify-between pointer-events-none z-20">
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/85 backdrop-blur-md border border-slate-700/80 text-[11px]">
-              <span className={`w-2 h-2 rounded-full ${hasLandmarks ? 'bg-cyan-400 animate-pulse' : 'bg-amber-400 animate-ping'}`} />
-              <span className={hasLandmarks ? 'text-cyan-300 font-semibold' : 'text-amber-300 font-medium'}>
-                {hasLandmarks ? '✓ Đã khớp khuôn mặt' : '⚠️ Hãy hướng mặt vào giữa khung'}
+              <span className={`w-2 h-2 rounded-full ${isAligned ? 'bg-emerald-400 animate-pulse' : hasLandmarks ? 'bg-cyan-400' : 'bg-amber-400 animate-ping'}`} />
+              <span className={isAligned ? 'text-emerald-300 font-semibold' : hasLandmarks ? 'text-cyan-300 font-medium' : 'text-amber-300 font-medium'}>
+                {isAligned ? '✓ Góc máy & khuôn mặt chuẩn' : hasLandmarks ? 'Đang căn góc nhìn đường...' : '⚠️ Hướng mặt vào khung camera'}
               </span>
             </div>
 
             <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-950/90 border border-cyan-700/80 text-[10px] text-cyan-300 font-mono">
               <Video className="w-3 h-3 text-cyan-400 animate-pulse" />
-              <span>LIVE VIEW</span>
+              <span>LIVE HUD</span>
             </div>
           </div>
 
-          {/* Large Center Countdown Number 3 -> 2 -> 1 */}
+          {/* Countdown Center Overlay */}
           {countdown !== null && (
-            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/60 backdrop-blur-xs animate-in zoom-in duration-150">
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/65 backdrop-blur-xs animate-in zoom-in duration-150">
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center shadow-2xl shadow-cyan-500/50 border-4 border-white/30 animate-pulse">
                 <span className="text-4xl sm:text-5xl font-black text-white drop-shadow-md">
                   {countdown === 0 ? '📷' : countdown}
                 </span>
               </div>
               <p className="text-xs sm:text-sm font-bold text-white mt-3 tracking-wide drop-shadow-md bg-slate-950/80 px-3 py-1 rounded-full border border-cyan-500/40">
-                {countdown === 0 ? 'Đang chụp mẫu & đo đạc...' : 'Giữ yên tư thế lái xe & nhìn thẳng'}
+                {countdown === 0 ? 'Đang đo góc & lưu mẫu chuẩn...' : 'Giữ yên tư thế lái xe & nhìn thẳng'}
               </p>
             </div>
           )}
         </div>
 
-        {/* 3 Step Guidance Cards */}
-        <div className="grid grid-cols-3 gap-2 mb-4 text-left">
-          <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between">
-            <div className="w-6 h-6 rounded-md bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center mb-1">
-              <Smartphone className="w-3.5 h-3.5" />
+        {/* Live Phone Angle & Mounting Telemetry Diagnosis */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3.5 text-left">
+          {/* Card 1: Pitch (Góc ngẩng / cúi) */}
+          <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] uppercase font-mono text-slate-400 flex items-center gap-1">
+                <Smartphone className="w-3 h-3 text-cyan-400" />
+                Góc ngẩng/cúi
+              </span>
+              <span className="text-[11px] font-mono font-bold text-cyan-300">
+                {livePose ? `${livePose.pitch > 0 ? '+' : ''}${livePose.pitch}°` : '--'}
+              </span>
             </div>
-            <span className="text-[11px] font-semibold text-slate-200">1. Cố định máy</span>
-            <span className="text-[10px] text-slate-400 leading-tight">Thẳng tầm mắt</span>
+            <span className="text-[10px] text-slate-300 font-medium leading-tight">
+              {livePose
+                ? livePose.pitch > 22
+                  ? 'Máy ngửa lên (Bù trừ +)'
+                  : livePose.pitch < -15
+                  ? 'Máy cụp xuống (Bù trừ -)'
+                  : 'Góc ngẩng chuẩn'
+                : 'Đang đo góc...'}
+            </span>
           </div>
 
-          <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between">
-            <div className="w-6 h-6 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mb-1">
-              <Eye className="w-3.5 h-3.5" />
+          {/* Card 2: Yaw (Vị trí kẹp máy Trái/Phải) */}
+          <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] uppercase font-mono text-slate-400 flex items-center gap-1">
+                <Compass className="w-3 h-3 text-blue-400" />
+                Vị trí kẹp máy
+              </span>
+              <span className="text-[11px] font-mono font-bold text-blue-300">
+                {livePose ? `${livePose.yaw > 0 ? '+' : ''}${livePose.yaw}°` : '--'}
+              </span>
             </div>
-            <span className="text-[11px] font-semibold text-slate-200">2. Mở mắt tự nhiên</span>
-            <span className="text-[10px] text-slate-400 leading-tight">Nhìn về trước</span>
+            <span className="text-[10px] text-slate-300 font-medium leading-tight">
+              {livePose
+                ? livePose.yaw < -12
+                  ? 'Kẹp bên phải taplo'
+                  : livePose.yaw > 12
+                  ? 'Kẹp bên trái taplo'
+                  : 'Giữa vô lăng'
+                : 'Đang định vị...'}
+            </span>
           </div>
 
-          <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between">
-            <div className="w-6 h-6 rounded-md bg-purple-500/10 border border-purple-500/30 text-purple-400 flex items-center justify-center mb-1">
-              <Smile className="w-3.5 h-3.5" />
+          {/* Card 3: Eye & Mouth Readiness */}
+          <div className="col-span-2 sm:col-span-1 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] uppercase font-mono text-slate-400 flex items-center gap-1">
+                <Eye className="w-3 h-3 text-emerald-400" />
+                Mắt & Miệng
+              </span>
+              <span className="text-[11px] font-mono font-bold text-emerald-300">
+                {livePose ? `EAR ${livePose.ear}` : '--'}
+              </span>
             </div>
-            <span className="text-[11px] font-semibold text-slate-200">3. Khép miệng</span>
-            <span className="text-[10px] text-slate-400 leading-tight">Thả lỏng 2s</span>
+            <span className="text-[10px] text-slate-300 font-medium leading-tight">
+              {livePose
+                ? livePose.ear >= 0.22
+                  ? '✓ Mắt mở tự nhiên'
+                  : '⚠️ Mở mắt tự nhiên'
+                : 'Chờ nhận diện'}
+            </span>
           </div>
         </div>
 
-        {/* Dynamic Action Section: Calibration Progress or Controls */}
+        {/* Calibration Progress or Action Buttons */}
         {calibration.isCalibrating ? (
-          <div className="space-y-2 bg-slate-950/80 p-3.5 rounded-2xl border border-cyan-500/40 animate-pulse">
+          <div className="space-y-2 bg-slate-950/90 p-4 rounded-2xl border border-cyan-500/40 animate-pulse">
             <div className="flex items-center justify-between text-xs font-mono">
               <span className="text-cyan-300 font-semibold flex items-center gap-1.5">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
-                Đang đo tỷ lệ mắt & cằm ({currentCount}/{totalFrames})
+                <RefreshCw className="w-4 h-4 animate-spin text-cyan-400" />
+                Đang lưu góc máy & khuôn mặt ({currentCount}/{totalFrames})
               </span>
               <span className="text-cyan-400 font-bold text-sm">{progressPercent}%</span>
             </div>
 
             <div className="w-full h-2.5 bg-slate-900 rounded-full border border-slate-800 overflow-hidden p-0.5">
               <div
-                className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 rounded-full transition-all duration-150 shadow-md shadow-cyan-500/50"
+                className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-emerald-500 rounded-full transition-all duration-150 shadow-md shadow-cyan-500/50"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-            <p className="text-[11px] text-slate-400">Vui lòng tiếp tục giữ yên trong chốc lát...</p>
+            <p className="text-[11px] text-slate-400">Giữ nguyên tư thế, hệ thống sẽ tự động bắt đầu giám sát...</p>
           </div>
         ) : countdown !== null ? (
           <div className="py-2 flex items-center justify-center gap-2 text-cyan-300 text-xs font-semibold">
@@ -457,7 +543,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
               }`}
             >
               <UserCheck className="w-4 h-4" />
-              <span>{hasLandmarks ? 'BẮT ĐẦU ĐẾM NGƯỢC NGAY' : 'HÃY HƯỚNG MẶT VÀO KHUNG CAMERA'}</span>
+              <span>{hasLandmarks ? 'BẮT ĐẦU HIỆU CHỈNH GÓC & KHUÔN MẶT' : 'HÃY HƯỚNG MẶT VÀO KHUNG CAMERA'}</span>
             </button>
 
             <button

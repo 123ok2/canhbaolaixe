@@ -33,11 +33,21 @@ export class DrowsinessEngine {
     closedEarThreshold: CONFIG.DEFAULT_EAR_CLOSED_THRESHOLD,
     baselineMar: 0.20,
     openMarThreshold: CONFIG.DEFAULT_MAR_YAWN_THRESHOLD,
-    samplesCount: 0
+    samplesCount: 0,
+    baselinePitch: 0,
+    baselineYaw: 0,
+    baselineRoll: 0,
+    baselineFaceCenterX: 0.5,
+    baselineFaceCenterY: 0.5,
+    baselineFaceScale: 0.25
   };
 
   private calibrationEarSamples: number[] = [];
   private calibrationMarSamples: number[] = [];
+  private calibrationPitchSamples: number[] = [];
+  private calibrationYawSamples: number[] = [];
+  private calibrationRollSamples: number[] = [];
+  private calibrationFaceCenterSamples: { x: number; y: number; scale: number }[] = [];
 
   private scoreWindow: number[] = [];
   private currentScore: number = 0;
@@ -108,7 +118,15 @@ export class DrowsinessEngine {
       distractionMetrics,
       isNewHeadDropDetected: rawHeadDrop,
       isNewDistractionDetected: rawDistraction
-    } = this.headPoseAnalyzer.analyze(landmarks, nowMs, eyeMetrics.isClosed, faceDetected, aspectRatio);
+    } = this.headPoseAnalyzer.analyze(
+      landmarks,
+      nowMs,
+      eyeMetrics.isClosed,
+      faceDetected,
+      aspectRatio,
+      this.calibration,
+      sensConfig.pitchThreshold || CONFIG.HEAD_DROP_PITCH_THRESHOLD
+    );
 
     // QUY TẮC BẮT BUỘC: Khi chưa hiệu chỉnh xong, TUYỆT ĐỐI KHÔNG tính điểm nguy hiểm và KHÔNG cảnh báo!
     if (!this.calibration.isCalibrated) {
@@ -427,18 +445,37 @@ export class DrowsinessEngine {
     const rightEar = calculateEAR(landmarks, CONFIG.FACEMESH_RIGHT_EYE, aspectRatio);
     const avgEar = (leftEar + rightEar) / 2.0;
     const mar = calculateMAR(landmarks, aspectRatio);
+    const rawPose = HeadPoseAnalyzer.calculateRawPose(landmarks, aspectRatio);
 
     this.calibrationEarSamples.push(avgEar);
     this.calibrationMarSamples.push(mar);
+    this.calibrationPitchSamples.push(rawPose.pitch);
+    this.calibrationYawSamples.push(rawPose.yaw);
+    this.calibrationRollSamples.push(rawPose.roll);
+    this.calibrationFaceCenterSamples.push({
+      x: rawPose.centerX,
+      y: rawPose.centerY,
+      scale: rawPose.scale
+    });
+
     this.calibration.samplesCount++;
 
     if (this.calibration.samplesCount >= CONFIG.CALIBRATION_FRAMES_REQUIRED) {
-      // Calculate median / average for baseline
-      const sortedEar = [...this.calibrationEarSamples].sort((a, b) => a - b);
-      const medianEar = sortedEar[Math.floor(sortedEar.length / 2)];
+      // 1. Median calculation helper
+      const calcMedian = (arr: number[]) => {
+        const sorted = [...arr].sort((a, b) => a - b);
+        return sorted[Math.floor(sorted.length / 2)] || 0;
+      };
 
-      const sortedMar = [...this.calibrationMarSamples].sort((a, b) => a - b);
-      const medianMar = sortedMar[Math.floor(sortedMar.length / 2)];
+      const medianEar = calcMedian(this.calibrationEarSamples);
+      const medianMar = calcMedian(this.calibrationMarSamples);
+      const medianPitch = calcMedian(this.calibrationPitchSamples);
+      const medianYaw = calcMedian(this.calibrationYawSamples);
+      const medianRoll = calcMedian(this.calibrationRollSamples);
+
+      const medianCenterX = calcMedian(this.calibrationFaceCenterSamples.map(s => s.x));
+      const medianCenterY = calcMedian(this.calibrationFaceCenterSamples.map(s => s.y));
+      const medianScale = calcMedian(this.calibrationFaceCenterSamples.map(s => s.scale));
 
       this.calibration.baselineEar = medianEar;
       // Dynamic closed eye threshold based on driver's unique open EAR (~68% of baseline, min 0.185)
@@ -449,6 +486,14 @@ export class DrowsinessEngine {
       const calculatedMarThreshold = Math.max(0.45, Math.min(0.54, medianMar * 1.7));
       this.calibration.openMarThreshold = calculatedMarThreshold;
 
+      // Lưu trữ góc đặt điện thoại chuẩn & vị trí mặt của tài xế
+      this.calibration.baselinePitch = Math.round(medianPitch * 10) / 10;
+      this.calibration.baselineYaw = Math.round(medianYaw * 10) / 10;
+      this.calibration.baselineRoll = Math.round(medianRoll * 10) / 10;
+      this.calibration.baselineFaceCenterX = Math.round(medianCenterX * 1000) / 1000;
+      this.calibration.baselineFaceCenterY = Math.round(medianCenterY * 1000) / 1000;
+      this.calibration.baselineFaceScale = Math.round(medianScale * 1000) / 1000;
+
       this.calibration.isCalibrated = true;
       this.calibration.isCalibrating = false;
     }
@@ -457,6 +502,10 @@ export class DrowsinessEngine {
   public openCalibration(): void {
     this.calibrationEarSamples = [];
     this.calibrationMarSamples = [];
+    this.calibrationPitchSamples = [];
+    this.calibrationYawSamples = [];
+    this.calibrationRollSamples = [];
+    this.calibrationFaceCenterSamples = [];
     this.calibration.samplesCount = 0;
     this.calibration.isCalibrated = false;
     this.calibration.isCalibrating = false;
@@ -467,6 +516,10 @@ export class DrowsinessEngine {
   public beginCalibrationSampling(): void {
     this.calibrationEarSamples = [];
     this.calibrationMarSamples = [];
+    this.calibrationPitchSamples = [];
+    this.calibrationYawSamples = [];
+    this.calibrationRollSamples = [];
+    this.calibrationFaceCenterSamples = [];
     this.calibration.samplesCount = 0;
     this.calibration.isCalibrated = false;
     this.calibration.isCalibrating = true;
@@ -481,6 +534,12 @@ export class DrowsinessEngine {
     this.calibration.closedEarThreshold = CONFIG.DEFAULT_EAR_CLOSED_THRESHOLD;
     this.calibration.baselineMar = 0.20;
     this.calibration.openMarThreshold = CONFIG.DEFAULT_MAR_YAWN_THRESHOLD;
+    this.calibration.baselinePitch = 0;
+    this.calibration.baselineYaw = 0;
+    this.calibration.baselineRoll = 0;
+    this.calibration.baselineFaceCenterX = 0.5;
+    this.calibration.baselineFaceCenterY = 0.5;
+    this.calibration.baselineFaceScale = 0.25;
     this.currentScore = 0;
     this.currentState = DrowsinessState.ALERT;
   }

@@ -4,8 +4,8 @@
  * Fully Optimized for Mobile & Desktop
  */
 
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, Camera, Compass, Eye, RefreshCw, Smartphone } from 'lucide-react';
-import React, { useEffect, useRef } from 'react';
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, Camera, CheckCircle2, Compass, Eye, RefreshCw, Smartphone } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CONFIG } from '../config/constants';
 import { CalibrationData, DistractionMetrics, DrowsinessState, EyeMetrics, HeadPoseMetrics, SensitivityLevel, YawnMetrics } from '../types';
 
@@ -52,6 +52,19 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
   onPlayFeedback
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [showCalibratedToast, setShowCalibratedToast] = useState<boolean>(false);
+  const prevCalibratedRef = useRef<boolean>(calibration.isCalibrated);
+
+  useEffect(() => {
+    if (!prevCalibratedRef.current && calibration.isCalibrated) {
+      setShowCalibratedToast(true);
+      const timer = setTimeout(() => {
+        setShowCalibratedToast(false);
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+    prevCalibratedRef.current = calibration.isCalibrated;
+  }, [calibration.isCalibrated]);
 
   // Canvas drawing effect for landmarks
   useEffect(() => {
@@ -415,7 +428,7 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
             <span>{statusBadge.text}</span>
           </div>
 
-          {!calibration.isCalibrated && (
+          {!calibration.isCalibrated ? (
             <div className="inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-medium bg-cyan-950/90 text-cyan-300 border border-cyan-700/80 backdrop-blur-md">
               {calibration.isCalibrating ? (
                 <>
@@ -429,7 +442,12 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
                 </>
               )}
             </div>
-          )}
+          ) : showCalibratedToast ? (
+            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold bg-emerald-950/95 text-emerald-300 border border-emerald-500/80 backdrop-blur-md shadow-lg shadow-emerald-950/60 animate-bounce">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>Đã lưu góc máy & Tự động kích hoạt giám sát!</span>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -449,8 +467,11 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({
           </div>
 
           <div className="bg-slate-950/85 backdrop-blur-md px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border border-slate-800/80 flex items-center gap-1.5 text-[9px] sm:text-[10px] text-slate-300 shadow-md">
-            <span>Quay: {headPose.yaw > 0 ? `+${headPose.yaw}` : headPose.yaw}°</span>
-            <span>Cúi: {headPose.pitch}°</span>
+            <span>Quay: {headPose.relativeYaw !== undefined ? (headPose.relativeYaw > 0 ? `+${headPose.relativeYaw}` : headPose.relativeYaw) : (headPose.yaw > 0 ? `+${headPose.yaw}` : headPose.yaw)}°</span>
+            <span>Cúi: {headPose.relativePitch !== undefined ? headPose.relativePitch : headPose.pitch}°</span>
+            {calibration.isCalibrated && (
+              <span className="text-[8px] uppercase font-bold text-cyan-400 bg-cyan-950/80 px-1 rounded">Bù góc</span>
+            )}
           </div>
 
           {yawnMetrics.isYawning && (
