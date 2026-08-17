@@ -316,6 +316,8 @@ export function useAudioAlerts() {
     if (isMuted) return;
     unlockAudio();
     stopActiveAlert(true);
+    // Instant piercing strobe burst for immediate driver acoustic reflex
+    audioSynthesizer.playUrgentDangerStrobe();
     playCustomAudioFile(
       'alert_khan_cap_lien_tuc.mp3',
       0,
@@ -463,6 +465,7 @@ export function useAudioAlerts() {
   const playLevel3Alert = useCallback((_customReason?: PrimaryAlertReason) => {
     if (isMuted) return;
     stopActiveAlert();
+    audioSynthesizer.playUrgentDangerStrobe();
     playCustomAudioFile(
       'alert_khan_cap_lien_tuc.mp3',
       0,

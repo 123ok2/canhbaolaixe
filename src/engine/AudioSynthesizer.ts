@@ -173,7 +173,7 @@ class WebAudioSynthesizer {
   }
 
   /**
-   * Play an urgent dual-beep Warning (Tier 2 fallback for level 2)
+   * Play an urgent triple-burst Warning (Tier 2 fallback for level 2)
    */
   public playWarningBeep(): void {
     const ctx = this.getAudioContext();
@@ -181,22 +181,22 @@ class WebAudioSynthesizer {
 
     try {
       const now = ctx.currentTime;
-      [0, 0.18].forEach((offset) => {
+      [0, 0.11, 0.22].forEach((offset) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
 
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(1050, now + offset);
-        osc.frequency.exponentialRampToValueAtTime(750, now + offset + 0.12);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(1180, now + offset);
+        osc.frequency.exponentialRampToValueAtTime(820, now + offset + 0.08);
 
-        gain.gain.setValueAtTime(0.4, now + offset);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.14);
+        gain.gain.setValueAtTime(0.45, now + offset);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.09);
 
         osc.connect(gain);
         gain.connect(ctx.destination);
 
         osc.start(now + offset);
-        osc.stop(now + offset + 0.15);
+        osc.stop(now + offset + 0.10);
       });
     } catch (e) {
       console.warn('Synthesizer warning beep error:', e);
@@ -204,7 +204,47 @@ class WebAudioSynthesizer {
   }
 
   /**
-   * Play continuous loud emergency alarm (Tier 2 fallback for level 3)
+   * Play instant high-urgency rapid danger strobe burst (5 rapid piercing pulses)
+   */
+  public playUrgentDangerStrobe(): void {
+    const ctx = this.getAudioContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+      // 5 rapid-fire high-pitch pulses (80ms spacing)
+      [0, 0.08, 0.16, 0.24, 0.32].forEach((offset, idx) => {
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc1.type = 'sawtooth';
+        osc2.type = 'square';
+
+        const baseFreq = idx % 2 === 0 ? 1650 : 2100;
+        osc1.frequency.setValueAtTime(baseFreq, now + offset);
+        osc2.frequency.setValueAtTime(baseFreq * 1.25, now + offset);
+
+        gain.gain.setValueAtTime(0.5, now + offset);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.06);
+
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc1.start(now + offset);
+        osc2.start(now + offset);
+        osc1.stop(now + offset + 0.07);
+        osc2.stop(now + offset + 0.07);
+      });
+    } catch (e) {
+      console.warn('Synthesizer danger strobe error:', e);
+    }
+  }
+
+  /**
+   * Play continuous high-urgency rapid emergency siren (Tier 2 fallback for level 3)
+   * Rapid, sharp, fast-paced staccato sweep (90ms cycle) for maximum driver awakening urgency
    */
   public startEmergencySiren(): void {
     const ctx = this.getAudioContext();
@@ -218,27 +258,30 @@ class WebAudioSynthesizer {
       const gain = ctx.createGain();
 
       osc1.type = 'sawtooth';
-      osc2.type = 'sine';
+      osc2.type = 'square';
 
-      gain.gain.setValueAtTime(0.35, ctx.currentTime);
+      gain.gain.setValueAtTime(0.45, ctx.currentTime);
 
       osc1.connect(gain);
       osc2.connect(gain);
       gain.connect(ctx.destination);
 
       let step = 0;
+      // Rapid 90ms alternating alarm steps for urgent, fast-paced hazard warning
+      const freqTable1 = [1200, 1850, 1050, 1650, 2200, 1400];
+      const freqTable2 = [1750, 2400, 1550, 2250, 2800, 1950];
+
       const intervalId = window.setInterval(() => {
         if (!this.ctx) return;
         const t = this.ctx.currentTime;
-        if (step % 2 === 0) {
-          osc1.frequency.setValueAtTime(950, t);
-          osc2.frequency.setValueAtTime(1400, t);
-        } else {
-          osc1.frequency.setValueAtTime(650, t);
-          osc2.frequency.setValueAtTime(1100, t);
-        }
+        const idx = step % freqTable1.length;
+        osc1.frequency.setValueAtTime(freqTable1[idx], t);
+        osc2.frequency.setValueAtTime(freqTable2[idx], t);
+        
+        // Fast pulsating volume modulation to create urgent staccato piercing effect
+        gain.gain.setValueAtTime(step % 2 === 0 ? 0.5 : 0.35, t);
         step++;
-      }, 250);
+      }, 90);
 
       osc1.start();
       osc2.start();

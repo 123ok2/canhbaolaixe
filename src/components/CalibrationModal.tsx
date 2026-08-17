@@ -74,33 +74,148 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
     }
   }, [stream, videoRef, isStreaming]);
 
-  // Live real-time analysis of face pose and angle relative to phone mount
-  const livePose = useMemo(() => {
-    if (!landmarks || landmarks.length < 400) return null;
-    const pose = HeadPoseAnalyzer.calculateRawPose(landmarks);
-    const ear = (calculateEAR(landmarks, CONFIG.FACEMESH_LEFT_EYE) + calculateEAR(landmarks, CONFIG.FACEMESH_RIGHT_EYE)) / 2;
-    const mar = calculateMAR(landmarks);
-    return {
-      pitch: Math.round(pose.pitch * 10) / 10,
-      yaw: Math.round(pose.yaw * 10) / 10,
-      roll: Math.round(pose.roll * 10) / 10,
-      centerX: pose.centerX,
-      centerY: pose.centerY,
-      scale: pose.scale,
-      ear: Math.round(ear * 100) / 100,
-      mar: Math.round(mar * 100) / 100
-    };
+  // Smoothed telemetry data to eliminate frame-to-frame number flicker and layout jumps
+  const smoothedRef = useRef({
+    pitch: 0,
+    yaw: 0,
+    roll: 0,
+    ear: 0.3,
+    mar: 0.2,
+    centerX: 0.5,
+    centerY: 0.5,
+    scale: 0.25,
+    isInitialized: false,
+    pitchStatus: 'Góc ngẩng chuẩn',
+    yawStatus: 'Giữa vô lăng',
+    eyeStatus: '✓ Mắt mở tự nhiên',
+    alignedStreak: 0,
+    unalignedStreak: 0,
+    isAlignedDebounced: false,
+  });
+
+  const [displayPose, setDisplayPose] = useState<{
+    pitch: number;
+    yaw: number;
+    roll: number;
+    ear: number;
+    mar: number;
+    centerX: number;
+    centerY: number;
+    scale: number;
+    pitchStatus: string;
+    yawStatus: string;
+    eyeStatus: string;
+    isAligned: boolean;
+  } | null>(null);
+
+  const lastUiUpdateTimeRef = useRef<number>(0);
+
+  // Live real-time analysis of face pose and angle with EMA smoothing & hysteresis
+  useEffect(() => {
+    if (!landmarks || landmarks.length < 400) {
+      if (displayPose !== null) {
+        setDisplayPose(null);
+      }
+      return;
+    }
+
+    const rawPose = HeadPoseAnalyzer.calculateRawPose(landmarks);
+    const rawEar = (calculateEAR(landmarks, CONFIG.FACEMESH_LEFT_EYE) + calculateEAR(landmarks, CONFIG.FACEMESH_RIGHT_EYE)) / 2;
+    const rawMar = calculateMAR(landmarks);
+
+    const s = smoothedRef.current;
+    if (!s.isInitialized) {
+      s.pitch = rawPose.pitch;
+      s.yaw = rawPose.yaw;
+      s.roll = rawPose.roll;
+      s.ear = rawEar;
+      s.mar = rawMar;
+      s.centerX = rawPose.centerX;
+      s.centerY = rawPose.centerY;
+      s.scale = rawPose.scale;
+      s.isInitialized = true;
+    } else {
+      // Exponential Moving Average filter (alpha = 0.16) for buttery-smooth number transitions
+      const alpha = 0.16;
+      s.pitch += (rawPose.pitch - s.pitch) * alpha;
+      s.yaw += (rawPose.yaw - s.yaw) * alpha;
+      s.roll += (rawPose.roll - s.roll) * alpha;
+      s.ear += (rawEar - s.ear) * alpha;
+      s.mar += (rawMar - s.mar) * alpha;
+      s.centerX += (rawPose.centerX - s.centerX) * alpha;
+      s.centerY += (rawPose.centerY - s.centerY) * alpha;
+      s.scale += (rawPose.scale - s.scale) * alpha;
+    }
+
+    // Instant alignment test on smoothed coordinates
+    const isCentered = s.centerX >= 0.25 && s.centerX <= 0.75 && s.centerY >= 0.20 && s.centerY <= 0.80;
+    const isGoodDistance = s.scale >= 0.12 && s.scale <= 0.50;
+    const isEyesOpen = s.ear >= 0.20;
+    const isAlignedRaw = isCentered && isGoodDistance && isEyesOpen;
+
+    if (isAlignedRaw) {
+      s.alignedStreak++;
+      s.unalignedStreak = 0;
+      if (s.alignedStreak >= 3) {
+        s.isAlignedDebounced = true;
+      }
+    } else {
+      s.unalignedStreak++;
+      s.alignedStreak = 0;
+      if (s.unalignedStreak >= 4) {
+        s.isAlignedDebounced = false;
+      }
+    }
+
+    // Hysteresis calculation for Pitch Status text
+    if (s.pitchStatus === 'Máy ngửa lên (Bù trừ +)') {
+      if (s.pitch <= 17) s.pitchStatus = 'Góc ngẩng chuẩn';
+    } else if (s.pitchStatus === 'Máy cụp xuống (Bù trừ -)') {
+      if (s.pitch >= -11) s.pitchStatus = 'Góc ngẩng chuẩn';
+    } else {
+      if (s.pitch > 22) s.pitchStatus = 'Máy ngửa lên (Bù trừ +)';
+      else if (s.pitch < -15) s.pitchStatus = 'Máy cụp xuống (Bù trừ -)';
+    }
+
+    // Hysteresis calculation for Yaw Status text
+    if (s.yawStatus === 'Kẹp bên phải taplo') {
+      if (s.yaw >= -7) s.yawStatus = 'Giữa vô lăng';
+    } else if (s.yawStatus === 'Kẹp bên trái taplo') {
+      if (s.yaw <= 7) s.yawStatus = 'Giữa vô lăng';
+    } else {
+      if (s.yaw < -12) s.yawStatus = 'Kẹp bên phải taplo';
+      else if (s.yaw > 12) s.yawStatus = 'Kẹp bên trái taplo';
+    }
+
+    // Hysteresis calculation for Eye Status text
+    if (s.eyeStatus === '✓ Mắt mở tự nhiên') {
+      if (s.ear < 0.19) s.eyeStatus = '⚠️ Mở mắt tự nhiên';
+    } else {
+      if (s.ear >= 0.22) s.eyeStatus = '✓ Mắt mở tự nhiên';
+    }
+
+    // Throttle React state update to ~140ms interval to eliminate UI number flash & jump
+    const now = Date.now();
+    if (now - lastUiUpdateTimeRef.current >= 140) {
+      lastUiUpdateTimeRef.current = now;
+      setDisplayPose({
+        pitch: Math.round(s.pitch * 10) / 10,
+        yaw: Math.round(s.yaw * 10) / 10,
+        roll: Math.round(s.roll * 10) / 10,
+        ear: Math.round(s.ear * 100) / 100,
+        mar: Math.round(s.mar * 100) / 100,
+        centerX: s.centerX,
+        centerY: s.centerY,
+        scale: s.scale,
+        pitchStatus: s.pitchStatus,
+        yawStatus: s.yawStatus,
+        eyeStatus: s.eyeStatus,
+        isAligned: s.isAlignedDebounced,
+      });
+    }
   }, [landmarks]);
 
-  // Evaluate alignment quality
-  const isAligned = useMemo(() => {
-    if (!livePose) return false;
-    // Face is roughly centered in frame and reasonable scale
-    const isCentered = livePose.centerX >= 0.25 && livePose.centerX <= 0.75 && livePose.centerY >= 0.20 && livePose.centerY <= 0.80;
-    const isGoodDistance = livePose.scale >= 0.12 && livePose.scale <= 0.50;
-    const isEyesOpen = livePose.ear >= 0.20;
-    return isCentered && isGoodDistance && isEyesOpen;
-  }, [livePose]);
+  const isAligned = displayPose?.isAligned ?? false;
 
   // Draw real-time face mesh on the preview canvas
   useEffect(() => {
@@ -127,9 +242,10 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    const primaryColor = isAligned ? '#10b981' : '#06b6d4';
-    const secondaryColor = isAligned ? '#34d399' : '#22d3ee';
-    const glowColor = isAligned ? 'rgba(16, 185, 129, 0.75)' : 'rgba(6, 182, 212, 0.75)';
+    const currentAligned = smoothedRef.current.isAlignedDebounced;
+    const primaryColor = currentAligned ? '#10b981' : '#06b6d4';
+    const secondaryColor = currentAligned ? '#34d399' : '#22d3ee';
+    const glowColor = currentAligned ? 'rgba(16, 185, 129, 0.75)' : 'rgba(6, 182, 212, 0.75)';
 
     // Helper: Draw smooth loop
     const drawContour = (
@@ -385,12 +501,12 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
           {/* Biometric Face Alignment Oval HUD */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
             <div
-              className={`w-36 h-48 sm:w-44 sm:h-56 rounded-[50%] border-2 transition-all duration-300 flex items-center justify-center relative ${
+              className={`w-36 h-48 sm:w-44 sm:h-56 rounded-[50%] border-2 transition-colors duration-300 flex items-center justify-center relative ${
                 isAligned
-                  ? 'border-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.45)] scale-100'
+                  ? 'border-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.45)]'
                   : hasLandmarks
-                  ? 'border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.35)] scale-98'
-                  : 'border-amber-400/80 border-dashed animate-pulse scale-95'
+                  ? 'border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.35)]'
+                  : 'border-amber-400/80 border-dashed animate-pulse'
               }`}
             >
               {/* Corner Biometric Brackets */}
@@ -411,9 +527,9 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
 
           {/* Real-time Status Overlay Pill */}
           <div className="absolute bottom-2.5 inset-x-3 flex items-center justify-between pointer-events-none z-20">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/85 backdrop-blur-md border border-slate-700/80 text-[11px]">
-              <span className={`w-2 h-2 rounded-full ${isAligned ? 'bg-emerald-400 animate-pulse' : hasLandmarks ? 'bg-cyan-400' : 'bg-amber-400 animate-ping'}`} />
-              <span className={isAligned ? 'text-emerald-300 font-semibold' : hasLandmarks ? 'text-cyan-300 font-medium' : 'text-amber-300 font-medium'}>
+            <div className="h-6 flex items-center gap-1.5 px-2.5 rounded-full bg-slate-950/85 backdrop-blur-md border border-slate-700/80 text-[11px] overflow-hidden">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${isAligned ? 'bg-emerald-400' : hasLandmarks ? 'bg-cyan-400' : 'bg-amber-400 animate-ping'}`} />
+              <span className={`truncate ${isAligned ? 'text-emerald-300 font-semibold' : hasLandmarks ? 'text-cyan-300 font-medium' : 'text-amber-300 font-medium'}`}>
                 {isAligned ? '✓ Góc máy & khuôn mặt chuẩn' : hasLandmarks ? 'Đang căn góc nhìn đường...' : '⚠️ Hướng mặt vào khung camera'}
               </span>
             </div>
@@ -442,67 +558,51 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
         {/* Live Phone Angle & Mounting Telemetry Diagnosis */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3.5 text-left">
           {/* Card 1: Pitch (Góc ngẩng / cúi) */}
-          <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between">
+          <div className="h-[74px] sm:h-20 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between overflow-hidden">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[10px] uppercase font-mono text-slate-400 flex items-center gap-1">
                 <Smartphone className="w-3 h-3 text-cyan-400" />
                 Góc ngẩng/cúi
               </span>
-              <span className="text-[11px] font-mono font-bold text-cyan-300">
-                {livePose ? `${livePose.pitch > 0 ? '+' : ''}${livePose.pitch}°` : '--'}
+              <span className="text-[11px] font-mono font-bold text-cyan-300 tabular-nums w-12 text-right">
+                {displayPose ? `${displayPose.pitch > 0 ? '+' : ''}${displayPose.pitch.toFixed(1)}°` : '--'}
               </span>
             </div>
-            <span className="text-[10px] text-slate-300 font-medium leading-tight">
-              {livePose
-                ? livePose.pitch > 22
-                  ? 'Máy ngửa lên (Bù trừ +)'
-                  : livePose.pitch < -15
-                  ? 'Máy cụp xuống (Bù trừ -)'
-                  : 'Góc ngẩng chuẩn'
-                : 'Đang đo góc...'}
-            </span>
+            <div className="h-5 flex items-center text-[10px] text-slate-300 font-medium leading-tight truncate">
+              {displayPose ? displayPose.pitchStatus : 'Đang đo góc...'}
+            </div>
           </div>
 
           {/* Card 2: Yaw (Vị trí kẹp máy Trái/Phải) */}
-          <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between">
+          <div className="h-[74px] sm:h-20 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between overflow-hidden">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[10px] uppercase font-mono text-slate-400 flex items-center gap-1">
                 <Compass className="w-3 h-3 text-blue-400" />
                 Vị trí kẹp máy
               </span>
-              <span className="text-[11px] font-mono font-bold text-blue-300">
-                {livePose ? `${livePose.yaw > 0 ? '+' : ''}${livePose.yaw}°` : '--'}
+              <span className="text-[11px] font-mono font-bold text-blue-300 tabular-nums w-12 text-right">
+                {displayPose ? `${displayPose.yaw > 0 ? '+' : ''}${displayPose.yaw.toFixed(1)}°` : '--'}
               </span>
             </div>
-            <span className="text-[10px] text-slate-300 font-medium leading-tight">
-              {livePose
-                ? livePose.yaw < -12
-                  ? 'Kẹp bên phải taplo'
-                  : livePose.yaw > 12
-                  ? 'Kẹp bên trái taplo'
-                  : 'Giữa vô lăng'
-                : 'Đang định vị...'}
-            </span>
+            <div className="h-5 flex items-center text-[10px] text-slate-300 font-medium leading-tight truncate">
+              {displayPose ? displayPose.yawStatus : 'Đang định vị...'}
+            </div>
           </div>
 
           {/* Card 3: Eye & Mouth Readiness */}
-          <div className="col-span-2 sm:col-span-1 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between">
+          <div className="col-span-2 sm:col-span-1 h-[74px] sm:h-20 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between overflow-hidden">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[10px] uppercase font-mono text-slate-400 flex items-center gap-1">
                 <Eye className="w-3 h-3 text-emerald-400" />
                 Mắt & Miệng
               </span>
-              <span className="text-[11px] font-mono font-bold text-emerald-300">
-                {livePose ? `EAR ${livePose.ear}` : '--'}
+              <span className="text-[11px] font-mono font-bold text-emerald-300 tabular-nums w-16 text-right">
+                {displayPose ? `EAR ${displayPose.ear.toFixed(2)}` : '--'}
               </span>
             </div>
-            <span className="text-[10px] text-slate-300 font-medium leading-tight">
-              {livePose
-                ? livePose.ear >= 0.22
-                  ? '✓ Mắt mở tự nhiên'
-                  : '⚠️ Mở mắt tự nhiên'
-                : 'Chờ nhận diện'}
-            </span>
+            <div className="h-5 flex items-center text-[10px] text-slate-300 font-medium leading-tight truncate">
+              {displayPose ? displayPose.eyeStatus : 'Chờ nhận diện'}
+            </div>
           </div>
         </div>
 
