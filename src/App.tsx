@@ -393,7 +393,7 @@ export default function App() {
             <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-cyan-400 shrink-0"></span>
             <span>Bản quyền thuộc về <strong className="text-amber-300 font-bold">PTDTBT THCS Thu Cúc</strong></span>
             <span className="text-slate-600 hidden sm:inline">•</span>
-            <span className="text-amber-400 font-medium">Sáng tạo Trẻ toàn quốc (Lĩnh vực AI)</span>
+            <span className="text-amber-400 font-medium">Cuộc thi KHTN Phú Thọ 2026)</span>
           </div>
           <p className="text-[10px] sm:text-[11px] text-slate-500 font-mono">
             DriveGuard AI &copy; 2026
