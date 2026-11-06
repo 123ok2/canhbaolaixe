@@ -391,7 +391,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 sm:gap-2 text-[11px] sm:text-[12px] text-slate-300">
             <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-cyan-400 shrink-0"></span>
-            <span>Bản quyền thuộc về <strong className="text-amber-300 font-bold">PTDTBT THCS Thu Cúc</strong></span>
+            <span>Bản quyền thuộc về <strong className="text-amber-300 font-bold"></strong></span>
             <span className="text-slate-600 hidden sm:inline">•</span>
             <span className="text-amber-400 font-medium">Cuộc thi KHTN Phú Thọ 2026</span>
           </div>
